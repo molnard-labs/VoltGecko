@@ -16,6 +16,8 @@ const messages:Record<string,string>={
   '{board} · kapocshuzalozás':'{board} · terminal wiring','{board} · sínkiosztás':'{board} · busbar schedule','{board} · betáplálások':'{board} · incoming supplies',
   '{board} · fázisterhelés':'{board} · phase loads','Végpont A':'Endpoint A','Végpont B':'Endpoint B','Kapcsok':'Terminals','Kapocskiosztás':'Terminal schedule',
   'Nincs kiosztva (W)':'Unassigned (W)','Egyidejű teljesítmény (W)':'Diversified power (W)',
+  'Részletezetlen kapcsolat':'Unspecified connection',
+  'Szaggatott vonal: korábbi, részletezetlen kapcsolat.':'Dashed line: previous, unspecified connection.',
   'A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.':'Sum of recorded load data; the factor does not change individual circuits.',
 };
 export default messages;

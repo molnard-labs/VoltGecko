@@ -10,6 +10,8 @@ const translations:Record<string,string>={
   'Egy készülék nem táplálhatja önmagát.':'A device cannot supply itself.',
   'Ez a kapcsolat hurkot hozna létre.':'This connection would create a cycle.',
   'Elosztókapcsolatok':'Board connections',
+  'Betáplálás és korábbi kapcsolatok':'Supply and previous connections',
+  'A korábbi tervben készülékszinten megadott kapcsolatok megmaradtak. Kapocsadataik nincsenek: a részletes hálózatot fent, vezetékekkel szerkeszd. A lecserélt régi kapcsolatot itt törölheted.':'Device-level connections from the previous plan are preserved without terminal details. Edit the detailed network above using wires. You can remove a replaced old connection here.',
   'Betáplálás megnevezése':'Supply label',
   'Például: 3×400/230 V, lakásbetáp':'For example: 3×400/230 V, apartment supply',
   'Válaszd ki, melyik készülékről kap táplálást az adott elem. Az egyvonalas rajz ezekből a kapcsolatokból készül.':'Choose the supply source of each device. These connections generate the single-line diagram.',
