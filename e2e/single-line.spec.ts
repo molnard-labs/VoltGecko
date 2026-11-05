@@ -42,11 +42,23 @@ async function configureGraph(page: Page): Promise<ProjectDocument> {
   const original = await readDocument(page);
   const main = original.data.devices.find(device => device.code === 'Q1')!;
   const rcd = original.data.devices.find(device => device.code === 'FI1')!;
+  const breaker = original.data.devices.find(device => device.code === 'QF1')!;
   await tab(page, 'Elosztó');
-  await page.getByLabel('Betáplálás megnevezése', { exact: true }).fill(supply);
-  await page.getByLabel('Q1 táplálása', { exact: true }).selectOption('supply');
-  await page.getByLabel('FI1 táplálása', { exact: true }).selectOption(`device:${main.id}`);
-  await page.getByLabel('QF1 táplálása', { exact: true }).selectOption(`device:${rcd.id}`);
+  await page.getByRole('button', { name: 'Betáplálás hozzáadása', exact: true }).click();
+  await page.locator('.wiring-item>summary').filter({ hasText: 'Külső betáplálás' }).click();
+  await page.getByLabel('1. betáplálás neve', { exact: true }).fill(supply);
+  await expect.poll(async () => (await readDocument(page)).data.boards[0].wiring?.infeeds.length).toBe(1);
+  const source = (await readDocument(page)).data.boards[0].wiring!.infeeds[0];
+  const endpoint = (deviceId: string, side: 'top' | 'bottom') => ({ kind: 'device', deviceId, side, pole: 0 });
+  const connect = async (from: object, to: object) => {
+    await page.getByLabel('Vezeték kezdőpontja', { exact: true }).selectOption(JSON.stringify(from));
+    await page.getByLabel('Vezeték végpontja', { exact: true }).selectOption(JSON.stringify(to));
+    await page.getByRole('button', { name: 'Vezeték létrehozása', exact: true }).click();
+  };
+  await connect({ kind: 'infeed', infeedId: source.id, pole: 0 }, endpoint(main.id, 'top'));
+  await connect(endpoint(main.id, 'bottom'), endpoint(rcd.id, 'top'));
+  await connect(endpoint(rcd.id, 'bottom'), endpoint(breaker.id, 'top'));
+  await expect.poll(async () => (await readDocument(page)).data.boards[0].wiring?.wires.length).toBe(3);
   await tab(page, 'Áramkörök');
   await page.getByLabel('ÁK1 kábele', { exact: true }).fill(cable);
   await page.getByLabel('ÁK1 teljesítménye', { exact: true }).fill('1234.5');
@@ -56,7 +68,7 @@ async function configureGraph(page: Page): Promise<ProjectDocument> {
     return { cable: circuit.cable, powerW: circuit.powerW, loadType: circuit.loadType };
   }).toEqual({ cable, powerW: 1234.5, loadType: 'socket' });
   const document = await readDocument(page);
-  expect(document.data.boards[0].connections).toHaveLength(3);
+  expect(document.data.boards[0].wiring?.wires).toHaveLength(3);
   expect(document.data.devices.map(device => [device.id, device.code])).toEqual(original.data.devices.map(device => [device.id, device.code]));
   return document;
 }
@@ -134,8 +146,9 @@ test('restores connection and load fields in a new version and preserves an edit
   await tab(page, 'Áramkörök');
   await page.getByLabel('ÁK1 teljesítménye', { exact: true }).fill('99');
   await tab(page, 'Elosztó');
-  await page.getByLabel('QF1 táplálása', { exact: true }).selectOption('none');
-  await expect.poll(async () => (await readDocument(page)).data.boards[0].connections?.length).toBe(2);
+  await page.locator('.wiring-wire-list button').last().click();
+  await page.getByRole('button', { name: 'Vezeték törlése', exact: true }).click();
+  await expect.poll(async () => (await readDocument(page)).data.boards[0].wiring?.wires.length).toBe(2);
   await page.locator('.main-nav').getByRole('button', { name: /Előzmények/ }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.locator('.timeline article').filter({ has: page.getByRole('heading', { name: 'QA: kapcsolatok és fogyasztó', exact: true }) }).getByRole('button', { name: 'Visszaállítás', exact: true }).click();
