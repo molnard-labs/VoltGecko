@@ -47,6 +47,7 @@ type Modal = 'projects' | 'new-project' | 'files' | 'settings' | 'help' | 'drive
 type Tool = FloorPlanProps['tool'];
 const FloorPlan = lazy(() => import('./components/FloorPlan').then((module) => ({ default: module.FloorPlan })));
 const BoardEditor = lazy(() => import('./components/BoardEditor').then((module) => ({ default: module.BoardEditor })));
+const IntegratedBoardPlanner = lazy(() => import('./components/IntegratedBoardPlanner').then((module) => ({ default: module.IntegratedBoardPlanner })));
 const SingleLine = lazy(() => import('./components/SingleLine').then((module) => ({ default: module.SingleLine })));
 const Circuits = lazy(() => import('./components/Circuits').then((module) => ({ default: module.Circuits })));
 const Inspector = lazy(() => import('./components/Inspector').then((module) => ({ default: module.Inspector })));
@@ -63,6 +64,8 @@ export default function App() {
   const [view, setView] = useState<View>('floor');
   const [sheetId, setSheetId] = useState('');
   const [boardId, setBoardId] = useState('');
+  const [boardMode, setBoardMode] = useState<'planner' | 'classic'>('planner');
+  const [plannerInitialView, setPlannerInitialView] = useState<'cab' | 'sld'>('cab');
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>('select');
@@ -111,6 +114,9 @@ export default function App() {
   } = useProjectDocument(notify);
   const switchDocument = (next: ProjectDocument) => {
     activateDocument(next);
+    const hasExistingBoard = next.data.boards.some((board) => board.rows.some((row) => row.placements.length) || board.connections?.length || board.wiring?.wires.length);
+    setBoardMode(!next.data.boardPlanner && hasExistingBoard ? 'classic' : 'planner');
+    setPlannerInitialView('cab');
     setSheetId(next.data.sheets[0]?.id ?? '');
     setBoardId(next.data.boards[0]?.id ?? '');
     setSelectedId(null);
@@ -302,6 +308,7 @@ export default function App() {
       notify(t('Érintsd meg az eszköz helyét az alaprajzon.'));
       return;
     }
+    setBoardMode('classic');
     let next = structuredClone(doc.data);
     const device = makeDevice(kind, next.devices, variant);
     next.devices.push(device);
@@ -372,6 +379,7 @@ export default function App() {
       const b = doc.data.boards.find((b) => b.rows.some((r) => r.placements.some((p) => p.deviceId === id)));
       if (b) {
         setBoardId(b.id);
+        setBoardMode('classic');
         setView('board');
       }
     }
@@ -406,6 +414,7 @@ export default function App() {
   const data = doc?.data;
   const sheet = data?.sheets.find((s) => s.id === sheetId) ?? data?.sheets[0];
   const device = data?.devices.find((d) => d.id === selectedId) ?? null;
+  const hasClassicBoard = data?.boards.some((board) => board.rows.some((row) => row.placements.length) || board.connections?.length || board.wiring?.wires.length);
   const nav = getNavigation();
   return (
     <>
@@ -510,6 +519,7 @@ export default function App() {
                       key={n.id}
                       onClick={() => {
                         setView(n.id);
+                        if (n.id === 'board') setPlannerInitialView('cab');
                         setTool('select');
                       }}
                     >
@@ -519,7 +529,7 @@ export default function App() {
                   ))}
               </div>
               <div className="toolbar-right">
-                {view === 'board' && (
+                {view === 'board' && boardMode === 'classic' && (
                   <button
                     className="quiet"
                     aria-label={t('Schneider terméktár')}
@@ -665,18 +675,33 @@ export default function App() {
                     </div>
                   ))}
                 {view === 'board' && (
-                  <BoardEditor
-                    data={data}
-                    boardId={boardId}
-                    onBoardChange={setBoardId}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                    onChange={changeData}
-                    onNotify={notify}
-                  />
+                  <div className="integrated-board-view">
+                    <div className="integrated-board-switch" role="group" aria-label={language === 'en' ? 'Board editor' : 'Elosztószerkesztő'}>
+                      <button aria-pressed={boardMode === 'planner'} onClick={() => { setBoardMode('planner'); setSelectedId(null); }}>
+                        {language === 'en' ? 'Cabinet drawing' : 'Szekrényrajz'}
+                      </button>
+                      <button aria-pressed={boardMode === 'classic'} onClick={() => { setBoardMode('classic'); setSelectedId(null); }}>
+                        {language === 'en' ? 'Previous board view' : 'Korábbi elosztónézet'}
+                      </button>
+                    </div>
+                    {boardMode === 'planner' && hasClassicBoard && <p className="integrated-board-note">{language === 'en'
+                      ? 'Devices in the previous board view are preserved there and are not automatically placed on this cabinet drawing.'
+                      : 'A korábbi elosztónézet készülékei ott megmaradnak; nem kerülnek automatikusan erre a szekrényrajzra.'}</p>}
+                    {boardMode === 'planner' ? <IntegratedBoardPlanner key={data.id} data={data} getCurrentData={() => docRef.current?.data} initialView={plannerInitialView} onChange={changeData} onNotify={notify} /> :
+                      <div className="integrated-board-classic"><BoardEditor data={data} boardId={boardId} onBoardChange={setBoardId}
+                        selectedId={selectedId} onSelect={setSelectedId} onChange={changeData} onNotify={notify} /></div>}
+                  </div>
                 )}
                 {view === 'single-line' && (
-                  <SingleLine data={data} boardId={boardId} onBoardChange={setBoardId} onSelect={setSelectedId} />
+                  <>
+                    {data.boardPlanner && <div className="integrated-board-line-notice">
+                      <p>{language === 'en' ? 'This drawing uses the previous board view. Open the cabinet planner for its single-line drawing.' : 'Ez a rajz a korábbi elosztónézet adataiból készül. Az új szekrényrajz egyvonalasa az elosztótervezőben látható.'}</p>
+                      <button onClick={() => { setBoardMode('planner'); setPlannerInitialView('sld'); setSelectedId(null); setView('board'); }}>
+                        {language === 'en' ? 'Open cabinet single-line drawing' : 'Szekrényrajz egyvonalasának megnyitása'}
+                      </button>
+                    </div>}
+                    <SingleLine data={data} boardId={boardId} onBoardChange={setBoardId} onSelect={setSelectedId} />
+                  </>
                 )}
                 {view === 'circuits' && <Circuits data={data} onChange={changeData} onSelect={setSelectedId} />}
                 {view === 'history' && (
