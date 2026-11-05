@@ -361,6 +361,34 @@ export function useWiringDiagram(
 }
 
 type DiagramState = ReturnType<typeof useWiringDiagram>;
+
+/** Decorative device faces use the existing device role; they never imply an electrical connection. */
+function DeviceFace({ type, x, y, width }: { type: string; x: number; y: number; width: number }) {
+  const cx = x + width / 2;
+  const isSwitch = ['breaker', 'mcb', 'rcd', 'rccb', 'rcbo', 'main', 'contactor', 'mpcb'].includes(type);
+  return (
+    <g className="wiring-device-face" aria-hidden="true" pointerEvents="none">
+      <rect className="wiring-device-face-panel" x={x + 3} y={y + 13} width={Math.max(0, width - 6)} height={59} rx={2} />
+      {isSwitch ? <>
+        <rect className="wiring-device-switch-slot" x={cx - 8} y={y + 38} width={16} height={19} rx={2} />
+        <path className="wiring-device-switch" d={`M${cx - 6} ${y + 40}h12l-1.5 12h-9z`} />
+        {['rcd', 'rccb', 'rcbo'].includes(type) && width >= 60 && <>
+          <circle className="wiring-device-test" cx={cx - 18} cy={y + 47} r={4} />
+          <text className="wiring-device-test-label" x={cx - 18} y={y + 49} textAnchor="middle">T</text>
+        </>}
+      </> : type === 'spd' ? <>
+        <rect className="wiring-device-spd-window" x={cx - 9} y={y + 41} width={18} height={10} rx={2} />
+        <path className="wiring-device-spd-mark" d={`M${cx - 2} ${y + 42}l-3 5h4l-1 4 5-6h-4l1-3`} />
+      </> : type === 'meter' ? <>
+        <rect className="wiring-device-display" x={cx - Math.min(17, width / 3)} y={y + 40} width={Math.min(34, width * 2 / 3)} height={14} rx={2} />
+        <text className="wiring-device-display-label" x={cx} y={y + 50} textAnchor="middle">kWh</text>
+      </> : type === 'terminal' ? <>
+        <circle className="wiring-device-terminal-screw" cx={cx} cy={y + 45} r={6} />
+        <path className="wiring-device-terminal-mark" d={`M${cx - 3} ${y + 45}h6`} />
+      </> : null}
+    </g>
+  );
+}
 interface Props {
   data: ProjectData;
   board: Board;
@@ -571,10 +599,11 @@ export function WiringDiagram({
               ><title>{[device.code, device.name, device.rating || typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title></rect>
               <clipPath id={clipId}><rect x={position.x + 3} y={position.y + 15} width={position.w - 6} height={58} /></clipPath>
               <g clipPath={`url(#${clipId})`}>
+              {device.kind !== 'blank' && <DeviceFace type={type} x={position.x} y={position.y} width={position.w} />}
               <text
                 className="wiring-device-code"
                 x={position.x + position.w / 2}
-                y={position.y + 30}
+                y={position.y + 25}
                 textAnchor="middle"
               >
                 {device.code}
@@ -582,12 +611,12 @@ export function WiringDiagram({
               <text
                 className="wiring-device-rating"
                 x={position.x + position.w / 2}
-                y={position.y + 48}
+                y={position.y + 69}
                 textAnchor="middle"
               >
                 {device.rating || '—'}
               </text>
-              <text className="wiring-device-type" x={position.x + position.w / 2} y={position.y + 66} textAnchor="middle"><title>{[typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title>{device.electrical?.group || typeLabel}</text>
+              <text className="wiring-device-type" x={position.x + position.w / 2} y={position.y + 36} textAnchor="middle"><title>{[typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title>{device.electrical?.group || typeLabel}</text>
               </g>
               <foreignObject className="wiring-device-grip-container" x={position.x + 4} y={position.y + 74} width={position.w - 8} height={20}>
               <button
