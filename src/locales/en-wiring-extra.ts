@@ -1,4 +1,9 @@
 const messages:Record<string,string>={
+  'Elosztó · szekrényrajz':'Distribution board · cabinet drawing',
+  'Elosztó · egyvonalas rajz':'Distribution board · single-line diagram',
+  'Az elosztórajz nem készíthető el a PDF-ben.':'The board drawing could not be included in the PDF.',
+  'Az elosztórajz túl nagy a PDF-hez. Mentsd külön SVG-fájlként.':'The board drawing is too large for the PDF. Save it separately as an SVG file.',
+  'Az elosztórajz nem olvasható.':'The board drawing could not be read.',
   'kapocs':'terminals','Sín':'Busbar','Hiányzó végpont':'Missing endpoint','Külső bekötés':'External connection',
   'Minden elosztó':'All distribution boards','PNG letöltése':'Download PNG','Rajz nyomtatása / PDF':'Print drawing / PDF','A PNG-export nem érhető el.':'PNG export is unavailable.',
   'Részletes kábeladatok':'Detailed cable data','{code} fázisa':'{code} phase',
