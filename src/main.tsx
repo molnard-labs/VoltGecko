@@ -9,6 +9,7 @@ import './components/plan-display.css';
 import './components/plan-image-fields.css';
 import './components/plan-upload.css';
 import './components/board-wiring.css';
+import './components/integrated-board-planner.css';
 import './components/single-line.css';
 import './components/product-library.css';
 import './styles.css';

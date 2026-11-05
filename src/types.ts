@@ -60,7 +60,13 @@ export interface BoardWiring {
   buses:BoardBus[]; wires:BoardWire[]; infeeds:BoardInfeed[]; demandFactor?:number;
 }
 export interface Asset { id: string; name: string; mime: string; data: string }
-export interface ProjectData { id: string; name: string; site: string; client: string; notes: string; sheets: PlanSheet[]; devices: Device[]; circuits: Circuit[]; boards: Board[]; floorPlanDisplay?: FloorPlanDisplay }
+/** Complete data from the embedded distribution-board editor, kept with this project. */
+export interface BoardPlannerSnapshot {
+  v: number; rev: number; project: Record<string, unknown>; boxes: unknown[]; rows: unknown[];
+  comps: Record<string, unknown>[]; wires: unknown[]; bw: unknown[]; bb: unknown[]; stubs: unknown[];
+  nid: number; lo?: Record<string, unknown>;
+}
+export interface ProjectData { id: string; name: string; site: string; client: string; notes: string; sheets: PlanSheet[]; devices: Device[]; circuits: Circuit[]; boards: Board[]; floorPlanDisplay?: FloorPlanDisplay; boardPlanner?: BoardPlannerSnapshot }
 export interface Revision { id: string; parentId?: string; createdAt: string; note: string; data: ProjectData; restoredFrom?: string }
 export interface ProjectDocument { schemaVersion: 1; data: ProjectData; assets: Record<string, Asset>; revisions: Revision[]; headRevisionId?: string; updatedAt: string; lastExternalSaveAt?: string; lastDriveSaveAt?: string }
 export interface ProjectSummary { id: string; name: string; site: string; updatedAt: string }
