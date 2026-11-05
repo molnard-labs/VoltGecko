@@ -3,6 +3,7 @@ import { makeDevice } from '../catalog';
 import { createProject } from '../data/project';
 import { setLanguage } from '../i18n';
 import { buildSingleLineSvg, buildProjectSingleLineSvg, circuitCableLabel } from './singleLine';
+import { diagramTiles } from './diagramPages';
 import type { Device } from '../types';
 
 afterEach(() => setLanguage('hu'));
@@ -24,6 +25,50 @@ function fixture() {
 }
 
 describe('single-line SVG', () => {
+  it('keeps the circuit schedule rows and title block readable across PDF page breaks', () => {
+    const { data, board, devices } = fixture();
+    data.circuits = Array.from({length:8},(_,i)=>({id:`c-${i}`,code:`C${i}`,name:`Circuit ${i}`,notes:'',color:'#287c68',protectionDeviceId:devices[2].id}));
+    const drawing = buildSingleLineSvg(data,board);
+    const regions = drawing.blocks.slice(-(4 * 9 + 2));
+    expect(regions).toHaveLength(38);
+    const pages = diagramTiles(drawing, 700, 350);
+    for (const region of regions) {
+      expect(pages.some(page => page.y <= region.y && page.y + page.height >= region.y + region.height), JSON.stringify({region,pages:pages.filter(page=>page.column===1)})).toBe(true);
+    }
+    const xPages = pages.filter(page=>page.row === 1);
+    expect(xPages.at(-1)!.x + xPages.at(-1)!.width).toBe(drawing.width);
+  });
+  it('distinguishes each detailed wire and the incomplete legacy feed without assuming they are equivalent', () => {
+    const { data, board, devices } = fixture();
+    devices[0].electrical = { poles: ['L'] }; devices[1].electrical = { poles: ['L'] };
+    board.wiring = { buses: [], infeeds: [], wires: [
+      { id: 'physical', from: { kind:'device', deviceId:devices[1].id, side:'top', pole:0 }, to: { kind:'device', deviceId:devices[0].id, side:'bottom', pole:0 } },
+      { id: 'second-wire', from: { kind:'device', deviceId:devices[0].id, side:'bottom', pole:0 }, to: { kind:'device', deviceId:devices[1].id, side:'top', pole:0 } },
+    ] };
+    const snapshot = structuredClone(data), svg = buildSingleLineSvg(data,board).svg;
+    expect(svg).toContain('data-connection-id="main-rcd"');
+    expect(svg).toContain('data-connection-id="physical"');
+    expect(svg).toContain('data-connection-id="second-wire"');
+    expect(svg).toContain('data-connection-id="branch-one"');
+    expect(svg).toContain('Részletezetlen kapcsolat');
+    expect(svg).toContain('stroke-dasharray="6 4"');
+    expect(data).toEqual(snapshot);
+  });
+  it('preserves an incomplete virtual supply when supply and earth conductors are added', () => {
+    const { data, board, devices } = fixture();
+    devices[0].electrical = { poles: ['L'] };
+    const target = { kind:'device' as const, deviceId:devices[0].id, side:'top' as const, pole:0 };
+    board.wiring = { buses: [], infeeds: [
+      { id:'grid', name:'Grid', kind:'supply', poles:['L'] },
+      { id:'earth', name:'Earth', kind:'earth', poles:['PE'] },
+    ], wires: [{ id:'earth-wire', from:{kind:'infeed',infeedId:'earth',pole:0}, to:target }] };
+    expect(buildSingleLineSvg(data,board).svg).toContain('data-connection-id="supply"');
+    board.wiring.wires.push({ id:'grid-wire', from:target, to:{kind:'infeed',infeedId:'grid',pole:0} });
+    const svg=buildSingleLineSvg(data,board).svg;
+    expect(svg).toContain('data-connection-id="supply"');
+    expect(svg).toContain('data-connection-id="grid-wire"');
+    expect(svg).toContain('data-connection-id="earth-wire"');
+  });
   it('exports an explicit green-yellow wire as two strokes while preserving solid custom greens', () => {
     const { data, board, devices } = fixture();
     board.connections = [];
