@@ -1,39 +1,49 @@
 import { expect, test } from '@playwright/test';
-import { chooseSample } from './startup';
+import { chooseSample, reopenRecentProject } from './startup';
+import type { ProjectDocument } from '../src/types';
 
-test('an old circuit acknowledgement cannot overwrite a newer edit', async ({ page }) => {
-  await page.addInitScript(() => {
-    window.addEventListener('message', event => {
-      if (event.data?.type === 'voltgecko:change') (window as any).__lastPlannerChange = event.data;
+test('one circuit links the floor plan and cabinet, and its physical wire appears in the single-line drawing', async ({ page }) => {
+  const readProject = () => page.evaluate(async () => {
+    const id = localStorage.getItem('planner.activeProject');
+    return new Promise<ProjectDocument>((resolve, reject) => {
+      const request = indexedDB.open('villamos-tervezo-local');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const get = db.transaction('projects', 'readonly').objectStore('projects').get(id!);
+        get.onerror = () => { db.close(); reject(get.error); };
+        get.onsuccess = () => { db.close(); resolve(get.result.document); };
+      };
     });
   });
+  const tab = (name: string) => page.locator('.view-tabs').getByRole('button', { name, exact: true }).click();
   await page.goto('/');
   await chooseSample(page);
-  await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
-  await page.getByRole('button', { name: 'Szekrényrajz', exact: true }).click();
-  const frame = page.frameLocator('iframe[title="Elosztótervező"]');
-  await frame.getByRole('button', { name: 'Kismegszakító 1P hozzáadása' }).click();
-  await frame.locator('#cabsvg [data-comp] rect').first().click({ position: { x: 4, y: 22 } });
-  await frame.getByRole('button', { name: 'Új közös áramkör' }).click();
-  const name = frame.getByLabel('Áramkör / fogyasztó neve', { exact: true });
-  await name.fill('Friss adat');
-  await expect.poll(() => page.evaluate(() => (window as any).__lastPlannerChange?.snapshot?.comps?.[0]?.name)).toBe('Friss adat');
-  await page.evaluate(() => {
-    const change = (window as any).__lastPlannerChange;
-    const id = change.snapshot.comps[0].vgCircuitId;
-    const target = document.querySelector<HTMLIFrameElement>('iframe[title="Elosztótervező"]')!.contentWindow!;
-    target.postMessage({ type: 'voltgecko:circuits', projectId: change.projectId, generation: change.generation,
-      ackSequence: change.sequence - 1, circuits: [{ id, code:'ÁK1', name:'Korábbi érték' }] }, location.origin);
-  });
-  await expect(name).toHaveValue('Friss adat');
-  await page.waitForTimeout(250);
-  await expect(name).toHaveValue('Friss adat');
-  await page.evaluate(() => {
-    const change = (window as any).__lastPlannerChange;
-    const id = change.snapshot.comps[0].vgCircuitId;
-    const target = document.querySelector<HTMLIFrameElement>('iframe[title="Elosztótervező"]')!.contentWindow!;
-    target.postMessage({ type: 'voltgecko:circuits', projectId: change.projectId, generation: change.generation,
-      ackSequence: change.sequence, circuits: [{ id, code:'ÁK1', name:'Aktuális érték' }] }, location.origin);
-  });
-  await expect(name).toHaveValue('Aktuális érték');
+  const initial = await readProject();
+  const main = initial.data.devices.find(d => d.code === 'Q1')!;
+  const breaker = initial.data.devices.find(d => d.code === 'QF1')!;
+  const floorDevice = initial.data.devices.find(d => d.code === 'D1')!;
+  const circuit = initial.data.circuits.find(c => c.protectionDeviceId === breaker.id)!;
+  expect(floorDevice.circuitId).toBe(circuit.id);
+  await tab('Áramkörök');
+  await page.getByLabel(`${circuit.code} neve`, { exact: true }).fill('Közös próbaáramkör');
+  await tab('Elosztó');
+  await expect(page.getByRole('button', { name: 'Szekrényrajz', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('QF1 táplálása', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Vezeték kezdőpontja', { exact: true }).selectOption(JSON.stringify({ kind: 'device', deviceId: main.id, side: 'bottom', pole: 0 }));
+  await page.getByLabel('Vezeték végpontja', { exact: true }).selectOption(JSON.stringify({ kind: 'device', deviceId: breaker.id, side: 'top', pole: 0 }));
+  await page.getByRole('button', { name: 'Vezeték létrehozása', exact: true }).click();
+  await expect.poll(async () => (await readProject()).data.boards[0].wiring?.wires.length).toBe(1);
+  const saved = await readProject();
+  const wireId = saved.data.boards[0].wiring!.wires[0].id;
+  expect(saved.data.devices.find(d => d.id === floorDevice.id)?.circuitId).toBe(circuit.id);
+  expect(saved.data.circuits.find(c => c.id === circuit.id)?.name).toBe('Közös próbaáramkör');
+  await tab('Egyvonalas');
+  await expect(page.locator(`.single-line-svg [data-connection-id="${wireId}"]`)).toHaveCount(1);
+  await expect(page.locator('.single-line-svg')).toContainText('Közös próbaáramkör');
+  await page.reload();
+  await reopenRecentProject(page);
+  await tab('Egyvonalas');
+  await expect(page.locator(`.single-line-svg [data-connection-id="${wireId}"]`)).toHaveCount(1);
+  expect((await readProject()).data.sheets).toEqual(initial.data.sheets);
 });

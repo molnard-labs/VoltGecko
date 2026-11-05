@@ -1,7 +1,7 @@
 const enSingleLine: Record<string, string> = {
   'Egyvonalas rajz': 'Single-line diagram',
   'KAPCSOLATI NÉZET': 'CONNECTION VIEW',
-  'Az elosztó ténylegesen megadott kapcsolatai, irányjelöléssel.': 'Explicitly defined board connections, with direction arrows.',
+  'Az elosztóban megadott vezetékek és korábbi, részletezetlen kapcsolatok.': 'The board’s specified wires and previous, unspecified connections.',
   'Egyvonalas rajz elosztója': 'Single-line diagram board',
   'Rajz nagyítása': 'Zoom in on diagram',
   'Rajz kicsinyítése': 'Zoom out of diagram',
@@ -18,7 +18,7 @@ const enSingleLine: Record<string, string> = {
   'Nincs készülék az elosztóban': 'No devices in this board',
   'Helyezz el készülékeket az elosztón, majd add meg a kapcsolataikat.': 'Place devices on the board, then define their connections.',
   'A sín sorrendje nem határozza meg a villamos kapcsolatokat.': 'DIN rail order does not define electrical connections.',
-  'A nyilak a megadott kapcsolat irányát jelzik.': 'Arrows show the direction of the defined connection.',
+  'A nyilak a korábbi, irányított kapcsolatokra vonatkoznak.': 'Arrows apply to previous directed connections.',
   'Kattints egy készülékre az adatlap megnyitásához.': 'Select a device to open its details.',
   'A rajz a megadott kapcsolatokat mutatja; a jelölések sematikusak.': 'The diagram shows the defined connections; symbols are schematic.',
   '{devices} készülék · {connections} kapcsolat': '{devices} devices · {connections} connections',

@@ -117,7 +117,7 @@ export function SingleLine({ data, boardId, onBoardChange, onSelect }: Props) {
         <div>
           <span className="eyebrow">{t('KAPCSOLATI NÉZET')}</span>
           <h2>{t('Egyvonalas rajz')}</h2>
-          <p>{t('Az elosztó ténylegesen megadott kapcsolatai, irányjelöléssel.')}</p>
+          <p>{t('Az elosztóban megadott vezetékek és korábbi, részletezetlen kapcsolatok.')}</p>
         </div>
         <select
           aria-label={t('Egyvonalas rajz elosztója')}
