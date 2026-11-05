@@ -44,6 +44,44 @@ function loadImage(source: string): Promise<HTMLImageElement> {
   });
 }
 
+interface PlannerDiagram { svg: string; w: number; h: number }
+
+/** Render the persisted board with the same drawing engine as the editor. */
+function plannerDiagrams(doc: ProjectDocument): Promise<{ cabinet: PlannerDiagram; singleLine: PlannerDiagram }> {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement('iframe');
+    frame.title = 'Elosztórajz előkészítése';
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1200px;height:800px;visibility:hidden;pointer-events:none';
+    const requestId = `pdf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let started = false;
+    const clean = () => { clearTimeout(timer); window.removeEventListener('message', receive); frame.remove(); };
+    const fail = () => { clean(); reject(new Error(t('Az elosztórajz nem készíthető el a PDF-ben.'))); };
+    const diagram = (value: unknown): value is PlannerDiagram => {
+      if (!value || typeof value !== 'object') return false;
+      const item = value as Partial<PlannerDiagram>;
+      return typeof item.svg === 'string' && item.svg.length <= 12_000_000 && typeof item.w === 'number' && Number.isFinite(item.w) && item.w > 0 && typeof item.h === 'number' && Number.isFinite(item.h) && item.h > 0;
+    };
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') return;
+      const message = event.data;
+      if (message.type === 'voltgecko:ready' && !started) {
+        started = true;
+        frame.contentWindow!.postMessage({type:'voltgecko:initialize', projectId:doc.data.id, projectName:doc.data.name, snapshot:doc.data.boardPlanner, circuits:doc.data.circuits}, window.location.origin);
+        frame.contentWindow!.postMessage({type:'voltgecko:export', projectId:doc.data.id, requestId}, window.location.origin);
+      } else if (message.type === 'voltgecko:error' && message.projectId === doc.data.id) fail();
+      else if (message.type === 'voltgecko:export-result' && message.projectId === doc.data.id && message.requestId === requestId) {
+        if (!diagram(message.cabinet) || !diagram(message.singleLine)) { fail(); return; }
+        clean(); resolve({ cabinet: message.cabinet, singleLine: message.singleLine });
+      }
+    };
+    const timer = window.setTimeout(fail, 20_000);
+    window.addEventListener('message', receive);
+    frame.addEventListener('error', fail, { once:true });
+    frame.src = `${import.meta.env.BASE_URL}board-planner.html`;
+    document.body.appendChild(frame);
+  });
+}
+
 async function rasterAsset(asset: Asset, maxEdge = 3000, transparent = false): Promise<HTMLCanvasElement> {
   const image = await loadImage(asset.data);
   const factor = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
@@ -390,6 +428,31 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       table(t('{board} · fázisterhelés',{board:board.name}),['L1 (W)','L2 (W)','L3 (W)','Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[60,60,60,90,114],[[loads.L1,loads.L2,loads.L3,loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'));
       const wiringIssues=getWiringIssues(doc.data,board);
       if(wiringIssues.length)table(t('Huzalozási jelzések'),['Jelzés'],[WIDTH],wiringIssues.map(issue=>[issue.message]));
+    }
+  }
+
+  if (doc.data.boardPlanner) {
+    const drawings = await plannerDiagrams(doc);
+    for (const [title, drawing] of [[t('Elosztó · szekrényrajz'), drawings.cabinet], [t('Elosztó · egyvonalas rajz'), drawings.singleLine]] as const) {
+      const mmPerUnit = .26;
+      let tiles: ReturnType<typeof diagramTiles>;
+      try { tiles = diagramTiles({width:drawing.w, height:drawing.h, blocks:[]}, WIDTH / mmPerUnit, 210 / mmPerUnit); }
+      catch { throw new Error(t('Az elosztórajz túl nagy a PDF-hez. Mentsd külön SVG-fájlként.')); }
+      for (const tile of tiles) {
+        const xml = new DOMParser().parseFromString(drawing.svg, 'image/svg+xml');
+        const root = xml.documentElement;
+        if (root.localName !== 'svg' || xml.querySelector('parsererror')) throw new Error(t('Az elosztórajz nem olvasható.'));
+        root.setAttribute('viewBox', `${tile.x} ${tile.y} ${tile.width} ${tile.height}`);
+        root.setAttribute('width', String(Math.ceil(tile.width * 1.5)));
+        root.setAttribute('height', String(Math.ceil(tile.height * 1.5)));
+        const image = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(xml))}`);
+        const canvas = document.createElement('canvas'); canvas.width = Math.ceil(tile.width * 1.5); canvas.height = Math.ceil(tile.height * 1.5);
+        const context = canvas.getContext('2d'); if (!context) throw new Error(t('A böngészőben a PDF képfeldolgozása nem érhető el.'));
+        context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        page(title, tiles.length > 1 ? t('Rajzrészlet: {column}/{columns}. oszlop · {row}/{rows}. sor', {column:tile.column, columns:tile.columns, row:tile.row, rows:tile.rows}) : '');
+        pdf.addImage(canvas, 'PNG', MARGIN, 60, tile.width * mmPerUnit, tile.height * mmPerUnit, undefined, 'FAST');
+        canvas.width = 0; canvas.height = 0;
+      }
     }
   }
 
