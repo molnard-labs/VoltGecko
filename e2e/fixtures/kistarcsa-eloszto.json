@@ -1,0 +1,1750 @@
+{
+ "v": 3,
+ "rev": 9,
+ "project": {
+  "name": "Lakás + fogyasztásmérő szekrény",
+  "author": "Mintatervező",
+  "address": "Mintacím",
+  "date": "2026-10-17",
+  "demand": 1,
+  "fileName": "kistarcsa-eloszto.json"
+ },
+ "boxes": [
+  {
+   "name": "Fogyasztásmérő",
+   "busPos": "bottom",
+   "bus": {
+    "n": 8,
+    "pe": 8
+   },
+   "bu": {
+    "n": [
+     "Főági sorkapocs N",
+     "Kerti ÁVK N",
+     "53. áramkör",
+     "50. áramkör",
+     "51. áramkör",
+     "52. áramkör"
+    ],
+    "pe": [
+     "Főági sorkapocs",
+     "53. áramkör",
+     "50. áramkör",
+     "51. áramkör",
+     "52. áramkör"
+    ]
+   },
+   "bo": {
+    "pe": {
+     "dx": 12,
+     "dy": 1
+    }
+   }
+  },
+  {
+   "name": "Lakáselosztó",
+   "busPos": "top",
+   "bus": {
+    "n": 30,
+    "pe": 24
+   },
+   "bu": {
+    "n": [
+     "FI2 ÁVK – ház",
+     "",
+     "21. áramkör",
+     "22. áramkör",
+     "1. áramkör",
+     "16. áramkör",
+     "14. áramkör",
+     "15. áramkör",
+     "4. áramkör",
+     "7. áramkör",
+     "10. áramkör",
+     "2. áramkör",
+     "11. áramkör",
+     "8. áramkör",
+     "12. áramkör",
+     "5. áramkör",
+     "17. áramkör",
+     "18. áramkör",
+     "13. áramkör",
+     "19. áramkör",
+     "6. áramkör",
+     "3. áramkör",
+     "9. áramkör",
+     "Napelem N"
+    ],
+    "pe": [
+     "X5 Főági sorkapocs PE",
+     "",
+     "21. áramkör",
+     "22. áramkör",
+     "1. áramkör",
+     "16. áramkör",
+     "14. áramkör",
+     "15. áramkör",
+     "4. áramkör",
+     "7. áramkör",
+     "10. áramkör",
+     "2. áramkör",
+     "11. áramkör",
+     "8. áramkör",
+     "12. áramkör",
+     "5. áramkör",
+     "17. áramkör",
+     "18. áramkör",
+     "13. áramkör",
+     "19. áramkör",
+     "6. áramkör",
+     "3. áramkör",
+     "9. áramkör",
+     "Napelem PE"
+    ]
+   },
+   "bo": {}
+  }
+ ],
+ "rows": [
+  {
+   "mods": 14,
+   "bar": "",
+   "box": 0
+  },
+  {
+   "mods": 14,
+   "bar": "",
+   "box": 0
+  },
+  {
+   "mods": 14,
+   "bar": "L3",
+   "box": 0
+  },
+  {
+   "mods": 18,
+   "bar": "L1",
+   "box": 1
+  },
+  {
+   "mods": 18,
+   "bar": "L2",
+   "box": 1
+  },
+  {
+   "mods": 18,
+   "bar": "L3",
+   "box": 1
+  }
+ ],
+ "comps": [
+  {
+   "poles": "3P+N",
+   "cls": "T1+T2",
+   "name": "Túlfeszültség-védő (Kinwa)",
+   "cable": "",
+   "id": "c4",
+   "type": "spd",
+   "row": 1,
+   "x": 9,
+   "infeed": {
+    "name": "Bejövő PEN",
+    "poles": "1P+N",
+    "cable": "Alu 1×10 mm²",
+    "side": "top",
+    "conductors": [
+     {
+      "p": 3,
+      "color": "#2d6fd3"
+     }
+    ],
+    "entry": {
+     "row": 0,
+     "x": 3
+    },
+    "off": {
+     "1": -35.5
+    },
+    "ctype": "",
+    "cores": "1",
+    "cs": "10",
+    "mat": "Alu"
+   }
+  },
+  {
+   "poles": "2P",
+   "rating": 25,
+   "sens": 30,
+   "rtype": "A",
+   "name": "Kerti ÁVK",
+   "cable": "",
+   "id": "c5",
+   "type": "rccb",
+   "row": 2,
+   "x": 0,
+   "nLeft": true
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 6,
+   "name": "KMSZ 53",
+   "cable": "Cu Tömör földkábel 5×1,5 mm²",
+   "loadType": "motor",
+   "power": 400,
+   "length": 10,
+   "phase": "L3",
+   "id": "c6",
+   "type": "mcb",
+   "row": 2,
+   "x": 2,
+   "kmsz": 53,
+   "nos": "53",
+   "consumers": "Udvar: bejárati kapu, garázs kapu",
+   "ctype": "Tömör földkábel",
+   "cores": "5",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 10,
+   "name": "KMSZ 50",
+   "cable": "",
+   "loadType": "socket",
+   "power": 700,
+   "length": "",
+   "phase": "L3",
+   "id": "c8",
+   "type": "mcb",
+   "row": 2,
+   "x": 3,
+   "kmsz": 50,
+   "nos": "50",
+   "consumers": "Udvar: szennyvíz átemelő"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "KMSZ 51",
+   "cable": "Cu Tömör földkábel 5×2,5 mm²",
+   "loadType": "socket",
+   "power": 3420,
+   "length": 30,
+   "phase": "L3",
+   "id": "c10",
+   "type": "mcb",
+   "row": 2,
+   "x": 4,
+   "kmsz": 51,
+   "nos": "51",
+   "consumers": "Grill: világ., dugalj, grill vezérlő; Medence: világ., medence keringető, medence fűtő; Kert: robotfűnyíró töltő, dugalj",
+   "ctype": "Tömör földkábel",
+   "cores": "5",
+   "cs": "2,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "KMSZ 52",
+   "cable": "",
+   "loadType": "socket",
+   "power": 4315,
+   "length": "",
+   "phase": "L3",
+   "id": "c12",
+   "type": "mcb",
+   "row": 2,
+   "x": 5,
+   "kmsz": 52,
+   "nos": "52",
+   "consumers": "Kút: szivattyú; Kisház: dugalj×2, világ.×2; Udvar: dugalj"
+  },
+  {
+   "poles": "1P+N",
+   "rating": 3.2,
+   "name": "Szennyvíz-átemelő motorvédő (50.1)",
+   "cable": "Cu Tömör földkábel 5×2,5 mm²",
+   "loadType": "motor",
+   "power": "",
+   "length": 7,
+   "id": "c14",
+   "type": "mpcb",
+   "row": 2,
+   "x": 6,
+   "ctype": "Tömör földkábel",
+   "cores": "5",
+   "cs": "2,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P+N",
+   "name": "",
+   "cable": "1×",
+   "loadType": "socket",
+   "power": "",
+   "length": "",
+   "id": "c15",
+   "type": "outlet",
+   "row": 2,
+   "x": 8,
+   "ctype": "",
+   "cores": "1",
+   "cs": "",
+   "mat": ""
+  },
+  {
+   "poles": "4P",
+   "rating": 40,
+   "sens": 30,
+   "rtype": "A",
+   "name": "ÁVK – ház",
+   "cable": "",
+   "id": "c17",
+   "type": "rccb",
+   "row": 5,
+   "x": 11
+  },
+  {
+   "poles": "3P",
+   "curve": "C",
+   "rating": 16,
+   "name": "Napelem betáp KMSZ",
+   "cable": "Cu 1×4 mm²",
+   "loadType": "other",
+   "power": "",
+   "length": "",
+   "phase": "",
+   "id": "c18",
+   "type": "mcb",
+   "row": 5,
+   "x": 15,
+   "infeed": {
+    "name": "Napelemes rendszer betáp",
+    "poles": "3P+N",
+    "cable": "Cu 1×4 mm²",
+    "side": "top",
+    "entry": {
+     "row": 3,
+     "x": 18.15,
+     "top": true
+    },
+    "off": {
+     "1": 2.4
+    },
+    "nolabel": true,
+    "ctype": "",
+    "cores": "1",
+    "cs": "4",
+    "mat": "Cu"
+   },
+   "tag": "F-PV",
+   "ctype": "",
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "Szolgáltatói KMSZ",
+   "cable": "",
+   "loadType": "other",
+   "power": "",
+   "length": "",
+   "phase": "L1",
+   "id": "c66",
+   "type": "mcb",
+   "row": 0,
+   "x": 0,
+   "tag": "F-L1",
+   "group": "szolg",
+   "infeed": {
+    "name": "Szolgáltatói betáp (L1/L2/L3)",
+    "poles": "1P+N",
+    "cable": "Alu 1×10 mm²",
+    "side": "top",
+    "ctype": "",
+    "cores": "1",
+    "cs": "10",
+    "mat": "Alu",
+    "conductors": [
+     {
+      "p": 0,
+      "color": "#1c1c1c"
+     }
+    ]
+   }
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "Szolgáltatói KMSZ",
+   "cable": "",
+   "loadType": "other",
+   "power": "",
+   "length": "",
+   "phase": "L2",
+   "id": "c67",
+   "type": "mcb",
+   "row": 0,
+   "x": 1,
+   "tag": "F-L2",
+   "group": "szolg",
+   "infeed": {
+    "name": "Szolgáltatói betáp (L1/L2/L3)",
+    "poles": "1P+N",
+    "cable": "Alu 1×10 mm²",
+    "side": "top",
+    "ctype": "",
+    "cores": "1",
+    "cs": "10",
+    "mat": "Alu"
+   }
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "Szolgáltatói KMSZ",
+   "cable": "",
+   "loadType": "other",
+   "power": "",
+   "length": "",
+   "phase": "L3",
+   "id": "c68",
+   "type": "mcb",
+   "row": 0,
+   "x": 2,
+   "tag": "F-L3",
+   "group": "szolg",
+   "infeed": {
+    "name": "Szolgáltatói betáp (L1/L2/L3)",
+    "poles": "1P+N",
+    "cable": "Alu 1×10 mm²",
+    "side": "top",
+    "ctype": "",
+    "cores": "1",
+    "cs": "10",
+    "mat": "Alu",
+    "conductors": [
+     {
+      "p": 0,
+      "color": "#1c1c1c"
+     }
+    ]
+   }
+  },
+  {
+   "poles": "1P",
+   "name": "Főági sorkapocs L1",
+   "cable": "",
+   "id": "c81",
+   "type": "terminal",
+   "row": 1,
+   "x": 0,
+   "tcol": "L1",
+   "group": "sork"
+  },
+  {
+   "poles": "1P",
+   "name": "Főági sorkapocs L2",
+   "cable": "",
+   "id": "c82",
+   "type": "terminal",
+   "row": 1,
+   "x": 1.657143,
+   "tcol": "L2",
+   "group": "sork"
+  },
+  {
+   "poles": "1P",
+   "name": "Főági sorkapocs L3",
+   "cable": "",
+   "id": "c83",
+   "type": "terminal",
+   "row": 1,
+   "x": 3.314286,
+   "tcol": "L3",
+   "group": "sork"
+  },
+  {
+   "poles": "1P",
+   "name": "Főági sorkapocs N",
+   "cable": "",
+   "id": "c84",
+   "type": "terminal",
+   "row": 1,
+   "x": 4.971429,
+   "tcol": "N",
+   "group": "sork"
+  },
+  {
+   "poles": "1P",
+   "name": "Főági sorkapocs PE",
+   "cable": "",
+   "id": "c85",
+   "type": "terminal",
+   "row": 1,
+   "x": 6.628571,
+   "tcol": "PE",
+   "group": "sork",
+   "infeed": {
+    "name": "Földelő szonda",
+    "kind": "earth",
+    "poles": "1P",
+    "cable": "Cu 1×25 mm²",
+    "side": "top",
+    "entry": {
+     "row": 0,
+     "x": 8,
+     "dx": 291.5
+    },
+    "conductors": [
+     {
+      "p": 0,
+      "color": "gy"
+     }
+    ],
+    "off": {
+     "1": -42.5
+    },
+    "ctype": "",
+    "cores": "1",
+    "cs": "25",
+    "mat": "Cu"
+   }
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 20",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": "",
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 3,
+   "kmsz": 20,
+   "nos": "20, 21",
+   "consumers": "Terasz: világ.; Ház mögött: kötődoboz",
+   "id": "c100",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu",
+   "fork": 2,
+   "out2": {
+    "ctype": "",
+    "cores": "1",
+    "cs": "1,5",
+    "mat": "Cu",
+    "cable": "Cu 1×1,5 mm²"
+   }
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 6,
+   "name": "KMSZ 1",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "other",
+   "power": 15,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 0,
+   "kmsz": 1,
+   "nos": "1",
+   "consumers": "Háztartási helyiség: riasztó",
+   "id": "c106",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 6,
+   "name": "KMSZ 14",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "lamp",
+   "power": 109.5,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 1,
+   "kmsz": 14,
+   "nos": "14, 16",
+   "consumers": "Előszoba: világ.; Konyha: világ.; Nappali: világ.; Mosdó: világ.; Előszoba: kaputelefon",
+   "id": "c110",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu",
+   "fork": 2,
+   "out2": {
+    "ctype": "",
+    "cores": "1",
+    "cs": "1,5",
+    "mat": "Cu",
+    "cable": "Cu 1×1,5 mm²"
+   }
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 15",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 591.5,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 2,
+   "kmsz": 15,
+   "nos": "15",
+   "consumers": "Nappali: dugalj, világ., robotporszívó töl…; Terasz: világ.×2; Ház mögött: világ.",
+   "id": "c112",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 4",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 1950,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 4,
+   "kmsz": 4,
+   "nos": "4",
+   "consumers": "Konyha: mosogatógép",
+   "id": "c114",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 16,
+   "name": "KMSZ 7",
+   "cable": "Cu 1×2,5 mm²",
+   "loadType": "other",
+   "power": 3700,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 5,
+   "kmsz": 7,
+   "nos": "7",
+   "consumers": "Konyha: főzőlap 1",
+   "id": "c116",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "2,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 10",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 4405.5,
+   "length": "",
+   "phase": "L1",
+   "type": "mcb",
+   "x": 17,
+   "kmsz": 10,
+   "nos": "10",
+   "consumers": "Kamra: világ., dugalj; Konyha: dugalj×2, hűtő, káféfőző, telefon töltők, világ.; Terasz: kinti hűtő, redőny motor",
+   "id": "c118",
+   "row": 3,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 2",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 295,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 0,
+   "kmsz": 2,
+   "nos": "2",
+   "consumers": "Háztartási helyiség: padlás routerek, kazán, szellőztető, dugalj",
+   "id": "c120",
+   "row": 4,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 11",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 1531,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 1,
+   "kmsz": 11,
+   "nos": "11",
+   "consumers": "Gyerekszoba: világ.×2, dugalj, párásító; Folyosó: dugalj×2; Előszoba: dugalj; Gardrób: világ.",
+   "id": "c122",
+   "row": 4,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 16,
+   "name": "KMSZ 8",
+   "cable": "Cu Tömör földkábel 3×2,5 mm²",
+   "loadType": "socket",
+   "power": 1800,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 17,
+   "kmsz": 8,
+   "nos": "8",
+   "consumers": "Biciklitároló: kompresszor, dugalj, világ.; Bejárat: dugalj",
+   "id": "c124",
+   "row": 4,
+   "ctype": "Tömör földkábel",
+   "cores": "3",
+   "cs": "2,5",
+   "mat": "Cu",
+   "ocol": "#7a4a1e"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 12",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 1991,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 2,
+   "kmsz": 12,
+   "nos": "12",
+   "consumers": "Hálószoba: világ., infrapanel; Garázs: elektromos autó, dugalj, világ., kapu nyitó",
+   "id": "c126",
+   "row": 4,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 5",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 2700,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 4,
+   "kmsz": 5,
+   "nos": "5",
+   "consumers": "Konyha: sütő",
+   "id": "c128",
+   "row": 4,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "C",
+   "rating": 13,
+   "name": "KMSZ 17",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 5792,
+   "length": "",
+   "phase": "L2",
+   "type": "mcb",
+   "x": 3,
+   "kmsz": 17,
+   "nos": "17",
+   "consumers": "Udvar: fogyasztásmérőhöz…; Ház mögött: dugalj; Nappali: tv, klíma; Garázs: one router, klíma, parkside akku, fagyasztó;…",
+   "id": "c130",
+   "row": 4,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 18",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": "",
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 0,
+   "kmsz": 18,
+   "nos": "18",
+   "consumers": "Mosdó: dugalj",
+   "id": "c132",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 13",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 21,
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 1,
+   "kmsz": 13,
+   "nos": "13",
+   "consumers": "Hálószoba: dugalj; Bejárati ajtó: világ.; Bejárat: világ., kötődoboz; Gyerekszoba: dugalj; Gardrób: dugalj",
+   "id": "c134",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 19",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 644,
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 2,
+   "kmsz": 19,
+   "nos": "19",
+   "consumers": "Dolgozó: világ., dugalj, nyomtató; Fürdő: világ.×3, dugalj×2; Folyosó: világ.; Háztartási: világ., dugalj",
+   "id": "c136",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 6",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 1200,
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 3,
+   "kmsz": 6,
+   "nos": "6",
+   "consumers": "Konyha: mikró",
+   "id": "c138",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 13,
+   "name": "KMSZ 3",
+   "cable": "Cu 1×1,5 mm²",
+   "loadType": "socket",
+   "power": 3100,
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 4,
+   "kmsz": 3,
+   "nos": "3",
+   "consumers": "Háztartási helyiség: mosógép, szárítógép",
+   "id": "c140",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "1P",
+   "curve": "B",
+   "rating": 16,
+   "name": "KMSZ 9",
+   "cable": "Cu 1×2,5 mm²",
+   "loadType": "other",
+   "power": 3700,
+   "length": "",
+   "phase": "L3",
+   "type": "mcb",
+   "x": 5,
+   "kmsz": 9,
+   "nos": "9",
+   "consumers": "Konyha: főzőlap 2",
+   "id": "c142",
+   "row": 5,
+   "ctype": "",
+   "cores": "1",
+   "cs": "2,5",
+   "mat": "Cu"
+  },
+  {
+   "poles": "2P",
+   "rating": 25,
+   "sens": 30,
+   "rtype": "A",
+   "name": "ÁVK",
+   "cable": "",
+   "id": "c158",
+   "type": "rccb",
+   "row": 3,
+   "x": 15
+  },
+  {
+   "poles": "2P",
+   "rating": 25,
+   "sens": 30,
+   "rtype": "A",
+   "name": "ÁVK",
+   "cable": "",
+   "id": "c159",
+   "type": "rccb",
+   "row": 4,
+   "x": 15
+  }
+ ],
+ "wires": [
+  {
+   "id": "w57",
+   "a": {
+    "c": "c8",
+    "s": "top"
+   },
+   "b": {
+    "c": "c14",
+    "s": "top",
+    "p": 0
+   },
+   "ctype": "Tömör földkábel",
+   "cores": "1",
+   "cs": "2,5",
+   "mat": "Cu",
+   "off": {
+    "1": 12.5
+   },
+   "cable": "Cu Tömör földkábel 1×2,5 mm²"
+  },
+  {
+   "id": "w58",
+   "a": {
+    "c": "c12",
+    "s": "top"
+   },
+   "b": {
+    "c": "c15",
+    "s": "top",
+    "p": 0
+   },
+   "ctype": "Tömör földkábel",
+   "cores": "1",
+   "cs": "2,5",
+   "mat": "Cu",
+   "off": {
+    "1": 5
+   },
+   "cable": "Cu Tömör földkábel 1×2,5 mm²"
+  },
+  {
+   "id": "w69",
+   "a": {
+    "c": "c66",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c4",
+    "s": "top",
+    "p": 0
+   },
+   "off": {
+    "1": 4
+   }
+  },
+  {
+   "id": "w70",
+   "a": {
+    "c": "c67",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c4",
+    "s": "top",
+    "p": 1
+   },
+   "color": "#1c1c1c",
+   "off": {
+    "1": -7.5
+   }
+  },
+  {
+   "id": "w71",
+   "a": {
+    "c": "c68",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c4",
+    "s": "top",
+    "p": 2
+   },
+   "color": "#8a8f95",
+   "off": {
+    "1": -22.5
+   }
+  },
+  {
+   "id": "w86",
+   "a": {
+    "c": "c4",
+    "s": "top",
+    "p": 0
+   },
+   "b": {
+    "c": "c81",
+    "s": "top",
+    "p": 0
+   },
+   "off": {
+    "1": -8
+   }
+  },
+  {
+   "id": "w87",
+   "a": {
+    "c": "c4",
+    "s": "top",
+    "p": 1
+   },
+   "b": {
+    "c": "c82",
+    "s": "top",
+    "p": 0
+   },
+   "off": {
+    "1": -17.5
+   }
+  },
+  {
+   "id": "w88",
+   "a": {
+    "c": "c4",
+    "s": "top",
+    "p": 2
+   },
+   "b": {
+    "c": "c83",
+    "s": "top",
+    "p": 0
+   },
+   "off": {
+    "1": -30
+   }
+  },
+  {
+   "id": "w89",
+   "a": {
+    "c": "c4",
+    "s": "top",
+    "p": 3
+   },
+   "b": {
+    "c": "c84",
+    "s": "top",
+    "p": 0
+   }
+  },
+  {
+   "id": "w90",
+   "a": {
+    "c": "c84",
+    "s": "top",
+    "p": 1
+   },
+   "b": {
+    "c": "c85",
+    "s": "top",
+    "p": 0
+   },
+   "color": "gy",
+   "off": {
+    "1": 19.5
+   }
+  },
+  {
+   "id": "w91",
+   "a": {
+    "c": "c81",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 0
+   },
+   "via": "left",
+   "lx": 26,
+   "ly": 46,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -82.5,
+    "2": -0.5
+   },
+   "cable": "Cu 1×4 mm²",
+   "length": 25
+  },
+  {
+   "id": "w92",
+   "a": {
+    "c": "c82",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 1
+   },
+   "via": "left",
+   "lx": 34,
+   "ly": 52,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -83,
+    "2": -0.5,
+    "3": -21
+   },
+   "cable": "Cu 1×4 mm²",
+   "length": 25
+  },
+  {
+   "id": "w93",
+   "a": {
+    "c": "c83",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 2
+   },
+   "via": "left",
+   "lx": 42,
+   "ly": 58,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -71,
+    "2": -1.5,
+    "3": -28
+   },
+   "cable": "Cu 1×4 mm²",
+   "length": 25
+  },
+  {
+   "id": "w94",
+   "a": {
+    "c": "c84",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 3
+   },
+   "via": "left",
+   "lx": 50,
+   "ly": 64,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -63.5,
+    "2": -1.5
+   },
+   "cable": "Cu 1×4 mm²",
+   "length": 25
+  },
+  {
+   "id": "w95",
+   "a": {
+    "c": "c83",
+    "s": "bottom",
+    "p": 1
+   },
+   "b": {
+    "c": "c5",
+    "s": "top",
+    "p": 1
+   },
+   "off": {
+    "1": -6.5
+   }
+  },
+  {
+   "id": "w96",
+   "a": {
+    "c": "c84",
+    "s": "bottom",
+    "p": 1
+   },
+   "b": {
+    "c": "c5",
+    "s": "top",
+    "p": 0
+   },
+   "off": {
+    "1": 5
+   }
+  },
+  {
+   "id": "w147",
+   "a": {
+    "c": "c4",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c85",
+    "s": "bottom",
+    "p": 0
+   },
+   "color": "gy",
+   "off": {
+    "1": -24.5
+   }
+  },
+  {
+   "id": "w154",
+   "a": {
+    "c": "c18",
+    "s": "bottom",
+    "p": 0
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 0
+   },
+   "ly": 0,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": 3.6
+   },
+   "cable": "Cu 1×4 mm²"
+  },
+  {
+   "id": "w155",
+   "a": {
+    "c": "c18",
+    "s": "bottom",
+    "p": 1
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 1
+   },
+   "ly": 5,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -18
+   },
+   "cable": "Cu 1×4 mm²"
+  },
+  {
+   "id": "w156",
+   "a": {
+    "c": "c18",
+    "s": "bottom",
+    "p": 2
+   },
+   "b": {
+    "c": "c17",
+    "s": "bottom",
+    "p": 2
+   },
+   "ly": 10,
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "off": {
+    "1": -37.5
+   },
+   "cable": "Cu 1×4 mm²"
+  },
+  {
+   "id": "w172",
+   "a": {
+    "c": "c158",
+    "s": "bottom",
+    "p": 1
+   },
+   "b": {
+    "c": "c118",
+    "s": "bottom"
+   },
+   "color": "#7a4a1e",
+   "off": {
+    "1": -25
+   }
+  },
+  {
+   "id": "w174",
+   "a": {
+    "c": "c158",
+    "s": "top",
+    "p": 1
+   },
+   "b": {
+    "c": "c18",
+    "s": "bottom",
+    "p": 0
+   },
+   "color": "#7a4a1e",
+   "off": {
+    "1": 1.5,
+    "2": 655
+   }
+  },
+  {
+   "id": "w176",
+   "a": {
+    "c": "c159",
+    "s": "top",
+    "p": 1
+   },
+   "b": {
+    "c": "c18",
+    "s": "bottom",
+    "p": 1
+   },
+   "color": "#1c1c1c",
+   "off": {
+    "1": -13.5,
+    "2": 646
+   }
+  },
+  {
+   "id": "w179",
+   "a": {
+    "c": "c159",
+    "s": "bottom",
+    "p": 1
+   },
+   "b": {
+    "c": "c124",
+    "s": "bottom"
+   },
+   "off": {
+    "1": -29.5
+   },
+   "color": "#7a4a1e",
+   "ctype": "",
+   "cores": "1",
+   "cs": "2,6",
+   "mat": "",
+   "cable": "1×2,6 mm²"
+  }
+ ],
+ "bw": [
+  {
+   "id": "w7",
+   "c": "c6"
+  },
+  {
+   "id": "w9",
+   "c": "c8"
+  },
+  {
+   "id": "w11",
+   "c": "c10"
+  },
+  {
+   "id": "w13",
+   "c": "c12"
+  },
+  {
+   "id": "w79",
+   "c": "c5",
+   "p": 1,
+   "feed": true
+  },
+  {
+   "id": "w101",
+   "c": "c100"
+  },
+  {
+   "id": "w107",
+   "c": "c106"
+  },
+  {
+   "id": "w111",
+   "c": "c110"
+  },
+  {
+   "id": "w113",
+   "c": "c112"
+  },
+  {
+   "id": "w115",
+   "c": "c114"
+  },
+  {
+   "id": "w117",
+   "c": "c116"
+  },
+  {
+   "id": "w121",
+   "c": "c120"
+  },
+  {
+   "id": "w123",
+   "c": "c122"
+  },
+  {
+   "id": "w127",
+   "c": "c126"
+  },
+  {
+   "id": "w129",
+   "c": "c128"
+  },
+  {
+   "id": "w131",
+   "c": "c130"
+  },
+  {
+   "id": "w133",
+   "c": "c132"
+  },
+  {
+   "id": "w135",
+   "c": "c134"
+  },
+  {
+   "id": "w137",
+   "c": "c136"
+  },
+  {
+   "id": "w139",
+   "c": "c138"
+  },
+  {
+   "id": "w141",
+   "c": "c140"
+  },
+  {
+   "id": "w143",
+   "c": "c142"
+  }
+ ],
+ "bb": [
+  {
+   "id": "w74",
+   "s": "top",
+   "box": 1,
+   "bus": "n",
+   "k": 0,
+   "c": "c17",
+   "p": 3,
+   "off": {
+    "1": 2.5,
+    "2": -6,
+    "3": -28
+   }
+  },
+  {
+   "id": "w78",
+   "s": "bottom",
+   "box": 0,
+   "bus": "n",
+   "k": 1,
+   "c": "c5",
+   "p": 0,
+   "off": {
+    "3": 8
+   }
+  },
+  {
+   "id": "w97",
+   "s": "bottom",
+   "box": 0,
+   "bus": "n",
+   "k": 0,
+   "c": "c84",
+   "p": 0,
+   "off": {
+    "1": 1,
+    "2": -9.5,
+    "3": -0.5
+   }
+  },
+  {
+   "id": "w98",
+   "s": "bottom",
+   "box": 0,
+   "bus": "pe",
+   "k": 0,
+   "c": "c85",
+   "p": 1,
+   "off": {
+    "1": -9,
+    "2": 17,
+    "3": -11
+   }
+  },
+  {
+   "id": "w99",
+   "s": "bottom",
+   "box": 1,
+   "bus": "pe",
+   "k": 0,
+   "c": "c85",
+   "p": 0,
+   "lx": 58,
+   "off": {
+    "1": -11.5,
+    "2": -2,
+    "3": 39
+   }
+  },
+  {
+   "id": "w149",
+   "c": "c17",
+   "s": "top",
+   "bus": "row",
+   "row": 3,
+   "p": 0,
+   "off": {
+    "1": -5,
+    "2": 3.5
+   }
+  },
+  {
+   "id": "w150",
+   "c": "c17",
+   "s": "top",
+   "bus": "row",
+   "row": 4,
+   "p": 1,
+   "off": {
+    "1": -12.5,
+    "2": 13.5
+   }
+  },
+  {
+   "id": "w151",
+   "c": "c17",
+   "s": "top",
+   "bus": "row",
+   "row": 5,
+   "p": 2,
+   "off": {
+    "1": 6.5,
+    "2": 11
+   }
+  },
+  {
+   "id": "w152",
+   "s": "top",
+   "box": 1,
+   "bus": "n",
+   "k": 23,
+   "ext": {
+    "x": 16.9,
+    "row": 3,
+    "label": "",
+    "dy": 14,
+    "edge": "right",
+    "title": "Napelem · 4 mm² · N, PE"
+   },
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "cable": "Cu 1×4 mm²"
+  },
+  {
+   "id": "w153",
+   "s": "top",
+   "box": 1,
+   "bus": "pe",
+   "k": 23,
+   "ext": {
+    "x": 17.45,
+    "row": 3,
+    "label": "",
+    "dy": 28,
+    "edge": "right",
+    "title": ""
+   },
+   "cores": "1",
+   "cs": "4",
+   "mat": "Cu",
+   "cable": "Cu 1×4 mm²"
+  },
+  {
+   "id": "w173",
+   "s": "top",
+   "box": 1,
+   "bus": "n",
+   "k": 29,
+   "c": "c158",
+   "p": 0,
+   "off": {
+    "1": 3.6
+   }
+  },
+  {
+   "id": "w175",
+   "s": "top",
+   "box": 1,
+   "bus": "n",
+   "k": 28,
+   "c": "c159",
+   "p": 0,
+   "off": {
+    "1": -3.5,
+    "2": 522.5,
+    "3": 0
+   }
+  }
+ ],
+ "stubs": [
+  {
+   "id": "w157",
+   "c": "c12",
+   "s": "top",
+   "color": "#1c1c1c",
+   "cores": "5",
+   "cs": "2,5",
+   "mat": "Cu",
+   "cable": "Cu 5×2,5 mm²",
+   "lt": "socket",
+   "length": 50
+  },
+  {
+   "id": "w177",
+   "c": "c158",
+   "s": "bottom",
+   "p": 0,
+   "color": "#2d6fd3",
+   "cores": "1",
+   "cs": "1,5",
+   "mat": "Cu",
+   "cable": "Cu 1×1,5 mm²"
+  },
+  {
+   "id": "w178",
+   "c": "c159",
+   "s": "bottom",
+   "p": 0,
+   "color": "#2d6fd3",
+   "cores": "1",
+   "cs": "2,5",
+   "cable": "1×2,5 mm²"
+  }
+ ],
+ "nid": 184,
+ "lo": {
+  "in:c85": {
+   "dx": -15,
+   "dy": -3
+  },
+  "bar:2": {
+   "dx": -17,
+   "dy": 12
+  }
+ }
+}

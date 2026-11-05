@@ -4,6 +4,8 @@ const browserName = process.env.PLAYWRIGHT_BROWSER === 'webkit' ? 'webkit' : 'ch
 
 export default defineConfig({
   testDir: './e2e',
+  // The other specs exercise the retained, previous React application.
+  testMatch: 'new-planner.spec.ts',
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
