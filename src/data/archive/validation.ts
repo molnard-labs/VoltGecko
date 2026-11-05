@@ -5,6 +5,7 @@ import { effectiveDevicePoles } from '../boardWiring';
 import { isPlanImageAsset } from '../planAppearance';
 import { fail, identifier, object, text, type JsonObject } from './format';
 import { readAssets } from './assets';
+import { isBoardPlannerSnapshot } from '../../services/plannerBridge';
 
 const kinds = new Set([
   'outlet',
@@ -293,6 +294,8 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
   text(value.notes, 'Projektjegyzet');
   if (value.floorPlanDisplay !== undefined && value.floorPlanDisplay !== 'symbols' && value.floorPlanDisplay !== 'images')
     fail('ismeretlen alaprajzi megjelenítés.');
+  if (value.boardPlanner !== undefined && !isBoardPlannerSnapshot(value.boardPlanner))
+    fail('az elosztóterv adatai hibásak vagy túl nagyok.');
   array(value.devices, 'Készülékek');
   array(value.circuits, 'Áramkörök');
   array(value.sheets, 'Tervlapok', 500);
