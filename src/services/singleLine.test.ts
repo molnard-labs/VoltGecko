@@ -235,6 +235,8 @@ describe('single-line SVG', () => {
     setLanguage('en');
     const result = buildSingleLineSvg(data, board);
     expect(result.svg).toContain('Saját szekrény');
+    expect(result.svg).toContain('specified wires and previous, unspecified connections');
+    expect(result.svg).not.toContain('with direction arrows');
     expect(result.svg).toContain('Input unspecified');
     expect(result.svg).toContain('Single-line diagram');
     expect(result.svg).not.toContain('Nincs megadva a bemenet');
