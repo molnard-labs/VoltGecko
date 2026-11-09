@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { ProjectDocument } from '../src/types';
 
 const outputDir = path.resolve('tmp/products-results');
-const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length + 7;
+const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length + 10;
 const library = (page: Page) => page.getByRole('dialog', { name: 'Gyártói termékkönyvtár', exact: true });
 const findProduct = async (dialog: Locator, reference: string) => {
   await dialog.getByRole('searchbox').fill(reference);
@@ -235,4 +235,30 @@ test('places a photographed Tracon terminal with its actual width and common scr
   await page.getByRole('button', { name: 'Új DIN-sor' }).click();
   await page.getByRole('combobox', { name: '2. sor: készülék elhelyezése' }).selectOption(saved.id);
   await expect(page.locator(`[data-device-id="${saved.id}"] image`)).toHaveAttribute('href', /^data:image\/webp;base64,/);
+});
+
+test('adds and places all three FLEAL-16/1 conductor variants with photos', async ({ page }) => {
+  await openPlanner(page);
+  await page.locator('.manufacturer-library-button').click();
+  const dialog = library(page);
+  const references = ['FLEAL-16/1', 'FLEAL-16/1K', 'FLEAL-16/1ZS'];
+  for (const reference of references) {
+    await dialog.getByRole('searchbox').fill(reference);
+    const card = dialog.locator('.product-card').filter({ has: page.getByText(reference, { exact: true }) });
+    await expect(card).toHaveCount(1);
+    await expect(card.locator('img')).toHaveAttribute('src', /^data:image\/webp;base64,/);
+    await expect(card.locator('.product-specs')).toContainText('13,9 mm');
+    await card.getByRole('button', { name: `Hozzáadás az elosztóhoz: ${reference}`, exact: true }).click();
+  }
+  await expect.poll(async () => (await readDocument(page)).data.devices.filter(item => references.includes(item.product?.reference ?? '')).length).toBe(3);
+  const devices = (await readDocument(page)).data.devices.filter(item => references.includes(item.product?.reference ?? ''));
+  expect(devices.map(item => item.electrical?.poles[0])).toEqual(['L', 'N', 'PE']);
+  await dialog.getByRole('button', { name: 'Termékkönyvtár bezárása' }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
+  await page.getByRole('button', { name: 'Új DIN-sor' }).click();
+  for (const device of devices) {
+    if (await page.locator(`[data-device-id="${device.id}"] image`).count() === 0)
+      await page.getByRole('combobox', { name: '2. sor: készülék elhelyezése' }).selectOption(device.id);
+    await expect(page.locator(`[data-device-id="${device.id}"] image`)).toHaveAttribute('href', /^data:image\/webp;base64,/);
+  }
 });

@@ -8,6 +8,9 @@ import blue from './tracon-images/blue.webp?inline';
 import red from './tracon-images/red.webp?inline';
 import greenyellow from './tracon-images/greenyellow.webp?inline';
 import fleal from './tracon-images/fleal.webp?inline';
+import fleal16Grey from './tracon-images/fleal-16-grey.webp?inline';
+import fleal16Blue from './tracon-images/fleal-16-blue.webp?inline';
+import fleal16GreenYellow from './tracon-images/fleal-16-greenyellow.webp?inline';
 
 // Width is the manufacturer's actual width divided by the planner's 18 mm module.
 const colors: Array<{suffix:string; hu:string; en:string; image:string; conductor:Conductor}> = [
@@ -20,6 +23,20 @@ const colors: Array<{suffix:string; hu:string; en:string; image:string; conducto
 ];
 const catalog = 'https://cdn.traconelectric.com/static/attachment/catalogue_2024_2025/hu/tracon_catalogue_2024_2025_A_HU.pdf';
 export const TRACON_PRODUCTS: CatalogProduct[] = [
+  ...([
+    {suffix:'', hu:'szürke', en:'grey', image:fleal16Grey, conductor:'L'},
+    {suffix:'K', hu:'kék', en:'blue', image:fleal16Blue, conductor:'N'},
+    {suffix:'ZS', hu:'zöld/sárga', en:'green/yellow', image:fleal16GreenYellow, conductor:'PE'},
+  ] as Array<{suffix:string; hu:string; en:string; image:string; conductor:Conductor}>).map(({suffix, hu, en, image, conductor}): CatalogProduct => ({
+    reference:`FLEAL-16/1${suffix}`, manufacturer:'Tracon Electric', range:'FLEAL',
+    category:'terminal', kind:'custom', mounting:'din', image,
+    name:{hu:`Főáramköri átmenő kapocs · ${hu}`, en:`Main line feed-through terminal · ${en}`},
+    description:{hu:'Alumínium- és rézvezetékhez. Egy pólus, egy bemenet és egy kimenet; a gyártói katalógus tömör vezetékre 25 mm², hajlékonyra 16 mm² maximális keresztmetszetet ad meg.', en:'For aluminium and copper conductors. One pole with one input and one output; the manufacturer catalogue specifies up to 25 mm² solid or 16 mm² flexible conductor.'},
+    moduleWidth:13.9/18, widthMm:13.9, poles:'1P', currentA:85,
+    electrical:{role:'terminal', poles:[conductor]},
+    sourceUrl:`${catalog}#page=36`, sourcePage:36, sourceDocument:'Tracon 2024–2025 · A/35',
+    verifiedAt:'2026-11-09',
+  })),
   ...colors.map(({suffix, hu, en, image, conductor}): CatalogProduct => ({
     reference:`FLECU-25-16-2${suffix}`, manufacturer:'Tracon Electric', range:'FLECU',
     category:'terminal', kind:'custom', mounting:'din', image,
