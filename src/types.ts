@@ -17,8 +17,8 @@ export interface Device {
 }
 export interface Placement extends Point { deviceId: string; rotation: number }
 export interface Route { id: string; fromDeviceId: string; toDeviceId: string; kind: 'power' | 'control'; circuitId?: string; points: Point[] }
-export interface Annotation extends Point { id: string; text: string }
-export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; mmPerUnit?: number; placements: Placement[]; routes: Route[]; annotations: Annotation[] }
+export interface Annotation extends Point { id: string; text: string; kind?: 'text'; fontSize?: number; color?: string }
+export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; routes: Route[]; annotations: Annotation[] }
 export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
 export interface BoardPlacement { deviceId: string; start: number }
 export interface BoardRow { id: string; name: string; capacity: number; placements: BoardPlacement[] }
@@ -54,7 +54,7 @@ export interface BoardBus {
   terminalLabels:string[]; offset?:Point;
 }
 export interface BoardInfeed {
-  id:string; name:string; kind:'supply'|'earth'; poles:Conductor[]; cable?:CableDetails; position?:Point; labelOffset?:Point;
+  id:string; name:string; kind:'supply'|'earth'; poles:Conductor[]; currentA?:number; cable?:CableDetails; position?:Point; labelOffset?:Point;
 }
 export interface BoardWiring {
   buses:BoardBus[]; wires:BoardWire[]; infeeds:BoardInfeed[]; demandFactor?:number;

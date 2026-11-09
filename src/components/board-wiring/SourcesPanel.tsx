@@ -64,7 +64,7 @@ export function SourcesPanel({
                 id: uid(),
                 name: t('Külső betáplálás'),
                 kind: 'supply',
-                poles: ['L1', 'L2', 'L3', 'N', 'PE']
+                poles: ['L', 'N', 'PE']
               })
             )
           }
@@ -211,10 +211,12 @@ export function SourcesPanel({
           </div>
         </details>
       ))}
+      <h4>{t('Bejövő vezetékek')}</h4>
+      <p className="subtle">{t('A betáplálást a rajzon húzással helyezheted el, pólusait vezetékekkel kötheted be.')}</p>
       {wiring.infeeds.map((source, index) => (
         <details className="wiring-item" key={source.id}>
           <summary>
-            {source.name} · {source.poles.join('/')}
+            {source.name} · {source.poles.join('/')}{source.currentA !== undefined ? ` · ${source.currentA} A` : ''}
           </summary>
           <label>
             {t('Betáplálás neve')}
@@ -252,6 +254,20 @@ export function SourcesPanel({
               onClearError();
             }}
           />
+          <label>
+            {t('Névleges áram (A)')}
+            <input
+              aria-label={t('{number}. betáplálás névleges árama (A)', { number: index + 1 })}
+              type="number" min="0" max="1000000" step="any"
+              value={source.currentA ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                const currentA = Number(value);
+                if (value === '' || (Number.isFinite(currentA) && currentA > 0 && currentA <= 1_000_000))
+                  onPatchInfeed(source.id, { currentA: value === '' ? undefined : currentA });
+              }}
+            />
+          </label>
           <CableFields
             prefix={t('{number}. bejövő kábel', { number: index + 1 })}
             cable={source.cable}

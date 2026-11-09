@@ -7,10 +7,12 @@ import {
   FolderOpen,
   LoaderCircle,
   MousePointer2,
+  MoreVertical,
   PencilRuler,
   Plus,
   Settings2,
   SlidersHorizontal,
+  Type,
   WifiOff,
   X,
   Zap
@@ -44,6 +46,7 @@ import { addPlanBackgrounds } from './data/planBackground';
 import { WorkspaceHeader } from './app/WorkspaceHeader';
 import { getNavigation, type View } from './app/navigation';
 import { LazyFeature } from './app/LazyFeature';
+import './app/sheet-menu.css';
 type Modal = 'projects' | 'new-project' | 'files' | 'settings' | 'help' | 'drive' | null;
 type Tool = FloorPlanProps['tool'];
 const FloorPlan = lazy(() => import('./components/FloorPlan').then((module) => ({ default: module.FloorPlan })));
@@ -63,6 +66,7 @@ export default function App() {
   const { language } = useLanguage();
   const [view, setView] = useState<View>('floor');
   const [sheetId, setSheetId] = useState('');
+  const [sheetMenuOpen, setSheetMenuOpen] = useState(false);
   const [boardId, setBoardId] = useState('');
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -525,14 +529,14 @@ export default function App() {
                 {view === 'board' && (
                   <button
                     className="quiet"
-                    aria-label={t('Schneider terméktár')}
+                    aria-label={t('Gyártói terméktár')}
                     onClick={(event) => {
                       event.currentTarget.focus();
                       setProductLibraryOpen(true);
                     }}
                   >
                     <BookOpen size={16} />
-                    <span>{t('Schneider terméktár')}</span>
+                    <span>{t('Gyártói terméktár')}</span>
                   </button>
                 )}
                 {view === 'floor' && (
@@ -584,11 +588,12 @@ export default function App() {
               <div className="plan-heading">
                 <div>
                   <span className="eyebrow">{t('VILLAMOS ELHELYEZÉSI TERV')}</span>
-                  <select
+                  <div className="sheet-selector-row"><select
                     aria-label={t('Aktív tervlap')}
                     value={sheet?.id ?? ''}
                     onChange={(e) => {
                       setSheetId(e.target.value);
+                      setSheetMenuOpen(false);
                       setSelectedId(null);
                     }}
                   >
@@ -598,6 +603,27 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+                  {sheet && <div className="export-dropdown sheet-menu">
+                    <button className="icon-button" aria-label={t('Tervlap műveletei')} aria-expanded={sheetMenuOpen} onClick={() => setSheetMenuOpen(open => !open)}><MoreVertical size={18}/></button>
+                    {sheetMenuOpen && <>
+                      <button className="menu-backdrop" aria-label={t('Menü bezárása')} onClick={() => setSheetMenuOpen(false)} />
+                      <div className="dropdown-menu">
+                        <button onClick={() => {
+                          setSheetMenuOpen(false);
+                          const name = prompt(t('Tervlap új neve:'), sheet.name)?.trim();
+                          if (name) changeData({ ...data, sheets: data.sheets.map(candidate => candidate.id === sheet.id ? { ...candidate, name } : candidate) });
+                        }}>{t('Átnevezés')}</button>
+                        <button onClick={() => {
+                          setSheetMenuOpen(false);
+                          if (!confirm(t('Törlöd az aktív tervlapot? Az eszközadatok megmaradnak.'))) return;
+                          const sheets = data.sheets.filter(candidate => candidate.id !== sheet.id);
+                          changeData({ ...data, sheets });
+                          setSheetId(sheets[0]?.id ?? '');
+                          setSelectedId(null);
+                        }}>{t('Törlés')}</button>
+                      </div>
+                    </>}
+                  </div>}</div>
                 </div>
                 <span className="sheet-count">
                   {t('{count} eszköz', { count: sheet?.placements.length ?? 0 })}
@@ -635,6 +661,7 @@ export default function App() {
                             { id: 'route', icon: Zap, label: t('Kapcsolat / nyomvonal') },
                             { id: 'control', icon: Settings2, label: t('Vezérlési kapcsolat') },
                             { id: 'note', icon: FileText, label: t('Megjegyzés a rajzon') },
+                            { id: 'text', icon: Type, label: t('Szöveg a rajzon') },
                             { id: 'scale', icon: PencilRuler, label: t('Méretarány beállítása') }
                           ].map((drawingTool) => (
                             <button

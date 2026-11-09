@@ -56,6 +56,7 @@ export function createDeviceFromProduct(product: CatalogProduct, devices: Device
   device.model = `${product.manufacturer} ${product.reference}`;
   device.rating = rating(product);
   device.product = snapshot(product);
+  if (product.electrical) device.electrical = structuredClone(product.electrical);
   if (boardId) device.boardId = boardId;
   if (product.mounting === 'din') device.moduleWidth = product.moduleWidth;
   else { delete device.moduleWidth; device.quantity = 1; }

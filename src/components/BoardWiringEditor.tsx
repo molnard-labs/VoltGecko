@@ -103,7 +103,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
     device.moduleWidth = role === 'terminal' ? 29 / 18 : role === 'mpcb' ? 3 : 4;
     device.electrical =
       role === 'terminal'
-        ? { role, poles: ['L1', 'L1'], commonPoleGroups: [[0, 1]] }
+        ? { role, poles: ['L1', 'L1'] }
         : { role, poles: role === 'meter' ? ['L1', 'L2', 'L3', 'N'] : ['L1', 'L2', 'L3'] };
     next.devices.push(device);
     const target = next.boards.find((item) => item.id === board.id)!;

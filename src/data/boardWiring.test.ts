@@ -17,6 +17,12 @@ function fixture() {
   return { doc, board, wiring: board.wiring };
 }
 describe('detailed wiring documentation', () => {
+  it('preserves the incoming supply rating in the project archive', async () => {
+    const { doc, wiring } = fixture();
+    wiring.infeeds[0].currentA = 16;
+    const loaded = await decodeProject(await encodeProject(doc));
+    expect(loaded.data.boards[0].wiring?.infeeds[0].currentA).toBe(16);
+  });
   it('derives poles from manufacturer counts instead of confusing module width with poles', () => {
     const device = makeDevice('breaker', []); device.moduleWidth = 4;
     expect(effectiveDevicePoles(device)).toEqual(['L']);

@@ -81,7 +81,12 @@ test('creates useful device presets and keeps a bus used by another cabinet',asy
   await page.getByRole('button',{name:'Fogyasztásmérő hozzáadása',exact:true}).click();
   await expect.poll(async()=>(await readDocument(page)).data.devices.length).toBe(original.data.devices.length+3);
   const project=await readDocument(page),terminal=project.data.devices.find(device=>device.code==='XT1')!;
-  expect(terminal.moduleWidth).toBeCloseTo(29/18);expect(terminal.electrical?.commonPoleGroups).toEqual([[0,1]]);
+  expect(terminal.moduleWidth).toBeCloseTo(29/18);expect(terminal.electrical?.commonPoleGroups).toBeUndefined();
+  await page.locator('.wiring-device-group').filter({hasText:'XT1'}).click();
+  await page.locator('.electrical-device-fields>summary').click();
+  await page.getByLabel('Pólusok: 2. pólus',{exact:true}).selectOption('N');
+  await expect(page.getByLabel('Pólusok: 1. pólus',{exact:true})).toHaveValue('L1');
+  await expect.poll(async()=>(await readDocument(page)).data.devices.find(device=>device.id===terminal.id)?.electrical?.poles).toEqual(['L1','N']);
   expect(project.data.devices.find(device=>device.code==='QM1')?.electrical).toMatchObject({role:'mpcb',poles:['L1','L2','L3']});
   expect(project.data.devices.find(device=>device.code==='EM1')?.electrical).toMatchObject({role:'meter',poles:['L1','L2','L3','N']});
   await page.getByLabel('Vezeték kezdőpontja',{exact:true}).selectOption(JSON.stringify({kind:'bus',busId:bus.id,terminal:0}));

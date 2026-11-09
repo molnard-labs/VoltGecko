@@ -169,6 +169,7 @@ function validateWiring(value: JsonObject, devices: unknown[]) {
       infeedLookup.set(infeed.id, infeed);
       text(infeed.name, 'Betáplálás neve', 1000);
       poles(infeed.poles);
+      if (infeed.currentA !== undefined) positive(infeed.currentA, 'Névleges áram (A)', 1_000_000);
       cableDetails(infeed.cable);
       if (infeed.kind !== 'supply' && infeed.kind !== 'earth') fail('ismeretlen betáplálástípus.');
       for (const key of ['position', 'labelOffset'])
@@ -362,6 +363,10 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       if (sheet.mmPerUnit <= 0) fail('a méretarány legyen pozitív.');
     }
     reference(sheet.backgroundAssetId, assets, 'Alaprajz', true);
+    if (sheet.backgroundOpacity !== undefined) {
+      finite(sheet.backgroundOpacity, 'Alaprajz fedettsége', 1);
+      if (sheet.backgroundOpacity < 0) fail('az alaprajz fedettsége 0 és 1 közötti szám legyen.');
+    }
     array(sheet.placements, 'Elhelyezések');
     array(sheet.routes, 'Kapcsolatok');
     array(sheet.annotations, 'Feliratok');
@@ -393,6 +398,15 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       object(annotation, 'Felirat');
       text(annotation.text, 'Felirat szövege');
       point(annotation, 'Felirat');
+      if (annotation.kind !== undefined && annotation.kind !== 'text') fail('ismeretlen felirattípus.');
+      if (annotation.fontSize !== undefined) {
+        finite(annotation.fontSize, 'Felirat betűmérete', 120);
+        if (annotation.fontSize < 6) fail('a felirat betűmérete 6 és 120 közötti szám legyen.');
+      }
+      if (annotation.color !== undefined) {
+        text(annotation.color, 'Felirat színe', 7);
+        if (!/^#[0-9a-fA-F]{6}$/.test(annotation.color)) fail('a felirat színe nem hatjegyű hexadecimális szín.');
+      }
     }
   }
   for (const board of value.boards) {

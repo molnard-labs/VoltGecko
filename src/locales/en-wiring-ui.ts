@@ -1,4 +1,7 @@
 const messages:Record<string,string>={
+  'Bejövő vezetékek':'Incoming conductors',
+  'A betáplálást a rajzon húzással helyezheted el, pólusait vezetékekkel kötheted be.':'Drag the supply into position on the drawing, then connect its poles with wires.',
+  '{number}. betáplálás névleges árama (A)':'Supply {number} rated current (A)',
   'Készülék mozgatása: {code}':'Move device: {code}',
   'Elosztó és huzalozás':'Cabinet and wiring',
   'A készülékeket a fogantyújukkal mozgasd. A kapcsokra kattintva vezetékeket hozhatsz létre.':'Use the grips to move devices. Select terminals to create wires.',

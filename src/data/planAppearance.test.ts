@@ -21,6 +21,17 @@ function imageProject() {
 }
 
 describe('floor-plan appearance', () => {
+  it('preserves the background opacity and styled text through archive export and import', async () => {
+    const document = createProject();
+    const sheet = document.data.sheets[0];
+    sheet.backgroundOpacity = 0.35;
+    sheet.annotations.push({ id: 'label', x: 45, y: 80, text: 'Felirat\nMásodik sor', kind: 'text', fontSize: 24, color: '#123456' });
+    const reopened = await decodeProject(await encodeProject(document));
+    expect(reopened.data.sheets[0].backgroundOpacity).toBe(0.35);
+    expect(reopened.data.sheets[0].annotations).toEqual(sheet.annotations);
+    sheet.backgroundOpacity = -0.1;
+    expect(() => validateProject(document)).toThrow();
+  });
   it('keeps existing projects in symbol mode without adding or changing their data', async () => {
     const original = createProject();
     original.data.devices = [makeDevice('light', [])];

@@ -1,4 +1,11 @@
 const translations: Record<string, string> = {
+  'Szöveg a rajzon': 'Text on the drawing',
+  'Szöveg a tervlapon:': 'Text on the floor plan:',
+  'Kattints a szöveg helyére': 'Click to place text',
+  'Alaprajz fedettsége': 'Floor plan opacity',
+  'Szöveg': 'Text',
+  'Betűméret': 'Font size',
+  'Szín': 'Color',
   'Dugalj': 'Socket outlet',
   'Védőérintkezős dugalj': 'Socket outlet with protective earth',
   'Kapcsoló': 'Switch',

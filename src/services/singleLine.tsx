@@ -171,7 +171,7 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
       const infeed=endpoint.kind==='infeed' ? data.boards.flatMap(item=>item.wiring?.infeeds??[]).find(item=>item.id===endpoint.infeedId) : undefined;
       const label=bus?.name??infeed?.name??t('Hiányzó végpont');
       const owner=data.boards.find(item=>item.wiring?.buses.some(value=>value.id===bus?.id)||item.wiring?.infeeds.some(value=>value.id===infeed?.id));
-      const detail=[owner?.name,bus ? `${bus.conductor} · ${bus.capacity} ${t('kapocs')}` : infeed ? `${infeed.poles.join(' / ')} · ${cableLabel(infeed.cable)}` : t('A kapcsolat végpontja nem található a projektben.')].filter(Boolean).join(' · ');
+      const detail=[owner?.name,bus ? `${bus.conductor} · ${bus.capacity} ${t('kapocs')}` : infeed ? [infeed.poles.join(' / '),infeed.currentA !== undefined ? `${infeed.currentA} A` : '',cableLabel(infeed.cable)].filter(Boolean).join(' · ') : t('A kapcsolat végpontja nem található a projektben.')].filter(Boolean).join(' · ');
       nodes.set(key,{key,label,detail,bus:!!bus,supply:infeed?.kind==='supply',incoming:0,circuits:[],x:0,y:0,height:132,rank:0});
     }
     return key;

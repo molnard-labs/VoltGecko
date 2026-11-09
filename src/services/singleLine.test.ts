@@ -98,7 +98,7 @@ describe('single-line SVG', () => {
     devices[0].electrical={poles:['L1','L2','L3','N']};devices[1].electrical={poles:['N','PE']};
     const other={id:'other',name:'Garden',rows:[],connections:[],wiring:{buses:[{id:'pe',name:'PE <bus>',conductor:'PE' as const,capacity:6,terminalLabels:[],position:'top' as const}],infeeds:[],wires:[]}};
     data.boards.push(other);
-    board.wiring={buses:[],infeeds:[{id:'grid',name:'Grid & supply',kind:'supply',poles:['L1','N']}],wires:[
+    board.wiring={buses:[],infeeds:[{id:'grid',name:'Grid & supply',kind:'supply',poles:['L1','N'],currentA:16}],wires:[
       {id:'feed-phase',from:{kind:'infeed',infeedId:'grid',pole:0},to:{kind:'device',deviceId:devices[0].id,side:'bottom',pole:0},cable:{designation:'H07V-K',cores:1,crossSectionMm2:6,lengthM:3}},
       {id:'neutral-wire',from:{kind:'infeed',infeedId:'grid',pole:1},to:{kind:'device',deviceId:devices[0].id,side:'bottom',pole:3}},
       {id:'same-device',from:{kind:'device',deviceId:devices[1].id,side:'top',pole:0},to:{kind:'device',deviceId:devices[1].id,side:'top',pole:1}},
@@ -107,7 +107,7 @@ describe('single-line SVG', () => {
     const before=structuredClone(data),drawing=buildSingleLineSvg(data,board);
     for(const wire of board.wiring.wires)expect(drawing.svg).toContain(`data-connection-id="${wire.id}"`);
     expect(drawing.svg.match(/data-connection-id=/g)).toHaveLength(4);
-    expect(drawing.svg).toContain('PE &lt;bus&gt;');expect(drawing.svg).toContain('Grid &amp; supply');expect(drawing.svg).toContain('H07V-K');expect(drawing.svg).toContain('6 mm²');
+    expect(drawing.svg).toContain('PE &lt;bus&gt;');expect(drawing.svg).toContain('Grid &amp; supply');expect(drawing.svg).toContain('16 A');expect(drawing.svg).toContain('H07V-K');expect(drawing.svg).toContain('6 mm²');
     expect(drawing.svg).toContain('alsó 4 (N)');expect(drawing.svg).not.toContain('marker-end="url(#single-line-arrow)"');
     const combined=buildProjectSingleLineSvg(data);expect(combined.svg.match(/data-connection-id=/g)).toHaveLength(4);expect(combined.svg).toContain('Garden');
     expect(data).toEqual(before);

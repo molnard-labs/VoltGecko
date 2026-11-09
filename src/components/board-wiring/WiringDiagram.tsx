@@ -7,6 +7,7 @@ import { effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '..
 import { automaticWireRoute } from '../../data/boardWireRouting';
 import type { RoutingTerminal, WiringObstacle } from '../../data/boardWireRouting';
 import { defaultWireColor, GREEN_YELLOW, wireColorAppearance } from '../../data/wireColors';
+import { TRACON_PRODUCTS } from '../../products/tracon';
 import type {
   Board,
   BoardBus,
@@ -578,6 +579,8 @@ export function WiringDiagram({
           const dragging = deviceDrag?.moved && deviceDrag.id === id;
           const invalid = invalidDevices.has(id) || (dragging && !deviceDrag.target);
           const type = device.electrical?.role ?? device.kind;
+          const productImage = device.product?.manufacturer === 'Tracon Electric'
+            ? TRACON_PRODUCTS.find(product => product.reference === device.product?.reference)?.image : undefined;
           const typeLabel = ({ breaker: 'MCB', mcb: 'MCB', rcd: 'RCD', rccb: 'RCCB', rcbo: 'RCBO', spd: 'SPD', main: 'MAIN', terminal: 'XT', meter: 'kWh', contactor: 'KM', mpcb: 'MPCB', blank: '—' } as Record<string, string>)[type] ?? type.toUpperCase();
           const clipId = `${deviceClipId}-${deviceIndex}`;
           return (
@@ -599,7 +602,7 @@ export function WiringDiagram({
               ><title>{[device.code, device.name, device.rating || typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title></rect>
               <clipPath id={clipId}><rect x={position.x + 3} y={position.y + 15} width={position.w - 6} height={58} /></clipPath>
               <g clipPath={`url(#${clipId})`}>
-              {device.kind !== 'blank' && <DeviceFace type={type} x={position.x} y={position.y} width={position.w} />}
+              {productImage ? <image href={productImage} x={position.x + 4} y={position.y + 29} width={position.w - 8} height={32} preserveAspectRatio="xMidYMid meet" pointerEvents="none" /> : device.kind !== 'blank' && <DeviceFace type={type} x={position.x} y={position.y} width={position.w} />}
               <text
                 className="wiring-device-code"
                 x={position.x + position.w / 2}
@@ -616,7 +619,7 @@ export function WiringDiagram({
               >
                 {device.rating || '—'}
               </text>
-              <text className="wiring-device-type" x={position.x + position.w / 2} y={position.y + 36} textAnchor="middle"><title>{[typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title>{device.electrical?.group || typeLabel}</text>
+              {!productImage && <text className="wiring-device-type" x={position.x + position.w / 2} y={position.y + 36} textAnchor="middle"><title>{[typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title>{device.electrical?.group || typeLabel}</text>}
               </g>
               <foreignObject className="wiring-device-grip-container" x={position.x + 4} y={position.y + 74} width={position.w - 8} height={20}>
               <button
@@ -707,7 +710,7 @@ export function WiringDiagram({
                 y={position.y}
                 onPointerDown={(event) => startDrag(event, 'infeed-label', source.id, position)}
               >
-                {source.name}
+                {source.name}{source.currentA !== undefined ? ` · ${source.currentA} A` : ''}
               </text>
               {source.poles.map((pole, poleIndex) =>
                 terminal(

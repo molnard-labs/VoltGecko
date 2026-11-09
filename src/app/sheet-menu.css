@@ -1,0 +1,4 @@
+.sheet-selector-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sheet-selector-row select { min-width: 0; max-width: 100%; }
+.sheet-menu { flex: none; }
+.sheet-menu .dropdown-menu { top: calc(100% + 4px); left: 0; right: auto; width: 180px; }

@@ -190,6 +190,10 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     pdf.setFillColor('#fafcfc'); pdf.setDrawColor(RULE); pdf.rect(field.x, field.y, field.w, field.h, 'FD');
     if (sheet.backgroundAssetId && doc.assets[sheet.backgroundAssetId]) {
       const canvas = await rasterAsset(doc.assets[sheet.backgroundAssetId]);
+      if ((sheet.backgroundOpacity ?? 1) < 1) {
+        const context = canvas.getContext('2d');
+        if (context) { context.save(); context.globalAlpha = 1 - (sheet.backgroundOpacity ?? 1); context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height); context.restore(); }
+      }
       pdf.addImage(canvas, 'PNG', x, top, sheet.width * scale, sheet.height * scale, undefined, 'FAST');
       canvas.width = 0; canvas.height = 0;
     }
@@ -206,6 +210,11 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     }
     pdf.setLineDashPattern([], 0);
     for (const annotation of sheet.annotations) {
+      if (annotation.kind === 'text') {
+        const size = Math.max(1, (annotation.fontSize ?? 18) * scale * 72 / 25.4);
+        text(annotation.text, px(annotation.x), py(annotation.y), size, annotation.color ?? '#222222');
+        continue;
+      }
       const lines = pdf.splitTextToSize(annotation.text, Math.max(20, Math.min(70, field.w / 4))) as string[];
       text(lines.slice(0, 4).join('\n'), Math.max(field.x + 1, Math.min(field.x + field.w - 75, px(annotation.x))), Math.max(field.y + 3, Math.min(field.y + field.h - 16, py(annotation.y))), 8.5, MUTED);
     }
@@ -385,7 +394,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     if(board.wiring){
       if(board.wiring.wires.length)table(t('{board} · kapocshuzalozás',{board:board.name}),['Azonosító','Végpont A','Végpont B','Kábel / vezeték','Megjegyzés'],[35,95,95,89,70],board.wiring.wires.map(wire=>[wire.id,wiringEndpointLabel(doc.data,wire.from),wiringEndpointLabel(doc.data,wire.to),cableLabel(wire.cable),wire.label??'']));
       if(board.wiring.buses.length)table(t('{board} · sínkiosztás',{board:board.name}),['Sín','Vezető','Kapcsok','Kapocskiosztás'],[70,35,30,249],board.wiring.buses.map(bus=>[bus.name,bus.conductor,String(bus.capacity),bus.terminalLabels.map((label,index)=>label?`${index+1}: ${label}`:'').filter(Boolean).join('\n')]));
-      if(board.wiring.infeeds.length)table(t('{board} · betáplálások',{board:board.name}),['Megnevezés','Pólusok','Kábel / vezeték'],[100,80,204],board.wiring.infeeds.map(infeed=>[infeed.name,infeed.poles.join(' / '),cableLabel(infeed.cable)]));
+      if(board.wiring.infeeds.length)table(t('{board} · betáplálások',{board:board.name}),['Megnevezés','Pólusok','Kábel / vezeték'],[100,80,204],board.wiring.infeeds.map(infeed=>[infeed.name,[infeed.poles.join(' / '),infeed.currentA !== undefined ? `${infeed.currentA} A` : ''].filter(Boolean).join(' · '),cableLabel(infeed.cable)]));
       const loads=getPhaseLoads(doc.data,board),factor=board.wiring.demandFactor??1;
       table(t('{board} · fázisterhelés',{board:board.name}),['L1 (W)','L2 (W)','L3 (W)','Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[60,60,60,90,114],[[loads.L1,loads.L2,loads.L3,loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'));
       const wiringIssues=getWiringIssues(doc.data,board);

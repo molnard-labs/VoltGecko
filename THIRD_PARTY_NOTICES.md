@@ -28,4 +28,6 @@ PDF.js CMaps, standard fonts and image codecs carry additional notices. `scripts
 
 Schneider Electric, Easy9 Pro, Easy9 EU, Acti9 and PrismaSeT are names of their respective owners. Product references and technical facts are attributed to the [official Easy9 Pro catalogue](https://www.se.com/hu/hu/download/document/Easy9Pro_catalog_HU/) in the catalogue data. The repository MIT license does not grant rights to third-party trademarks or manufacturer catalogue artwork. No manufacturer endorsement is claimed.
 
+Tracon Electric product photographs are from the manufacturer's product pages and are shown with the corresponding catalogue entries. Tracon and the photographs remain the property of their respective owners; the application license does not grant rights to them.
+
 The VoltGecko brand concepts were generated using the built-in image generation tool. Generation prompts are retained under `branding/`; the selected application assets are in `public/brand/`.

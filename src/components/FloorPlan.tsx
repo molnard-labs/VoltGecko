@@ -26,7 +26,7 @@ export interface FloorPlanProps {
   assets: Record<string, Asset>;
   sheetId: string;
   selectedId: string | null;
-  tool: DeviceKind | 'select' | 'route' | 'control' | 'note' | 'scale';
+  tool: DeviceKind | 'select' | 'route' | 'control' | 'note' | 'text' | 'scale';
   onSelect: (id: string | null) => void;
   onChange: (data: ProjectData) => void;
   onAddDevice: (kind: DeviceKind, sheetId: string, point: Point) => void;
@@ -141,6 +141,7 @@ export function FloorPlan({
   const selectedPlacement = sheet.placements.find((p) => p.deviceId === selectedId);
   const selectedDevice = selectedId ? devices.get(selectedId) : undefined;
   const selectedRoute = sheet.routes.find((r) => r.id === selectedRouteId);
+  const selectedText = sheet.annotations.find((note) => note.id === selectedNoteId && note.kind === 'text');
   const fromPlacement = sheet.placements.find((p) => p.deviceId === fromId);
   const fittedWidth = fit().width;
   const zoomPercent = Math.round((fittedWidth / view.width) * 100);
@@ -348,10 +349,13 @@ export function FloorPlan({
       setFromId(null);
       return;
     }
-    if (tool === 'note') {
-      const text = window.prompt(t('Megjegyzés a tervlapon:'));
-      if (text?.trim())
-        updateSheet((s) => ({ ...s, annotations: [...s.annotations, { id: uid(), ...p, text: text.trim() }] }));
+    if (tool === 'note' || tool === 'text') {
+      const text = window.prompt(t(tool === 'text' ? 'Szöveg a tervlapon:' : 'Megjegyzés a tervlapon:'));
+      if (text?.trim()) {
+        const id = uid();
+        updateSheet((s) => ({ ...s, annotations: [...s.annotations, { id, ...p, text: text.trim(), ...(tool === 'text' ? { kind: 'text' as const, fontSize: 18, color: '#222222' } : {}) }] }));
+        if (tool === 'text') { setSelectedNoteId(id); setSelectedRouteId(null); onSelect(null); }
+      }
       return;
     }
     if (tool === 'scale') {
@@ -418,6 +422,8 @@ export function FloorPlan({
           : t('Jelöld ki egy ismert hosszúságú szakasz két végét')
         : tool === 'note'
           ? t('Kattints a megjegyzés helyére')
+          : tool === 'text'
+            ? t('Kattints a szöveg helyére')
           : tool !== 'select'
             ? t('{device} · kattints az elhelyezéshez', { device: deviceToolLabel || kindLabel(tool) })
             : '';
@@ -507,6 +513,12 @@ export function FloorPlan({
                   <span>{label}</span>
                 </label>
               ))}
+              {background && <label className="floor-opacity-control">
+                <span>{t('Alaprajz fedettsége')}: {Math.round((sheet.backgroundOpacity ?? 1) * 100)}%</span>
+                <input type="range" min="0" max="100" step="1" value={Math.round((sheet.backgroundOpacity ?? 1) * 100)}
+                  aria-label={t('Alaprajz fedettsége')}
+                  onChange={(e) => updateSheet((s) => ({ ...s, backgroundOpacity: Number(e.target.value) / 100 }))} />
+              </label>}
             </div>
           )}
         </div>
@@ -570,6 +582,7 @@ export function FloorPlan({
             width={sheet.width}
             height={sheet.height}
             preserveAspectRatio="none"
+            opacity={sheet.backgroundOpacity ?? 1}
             pointerEvents="none"
           />
         )}
@@ -770,6 +783,7 @@ export function FloorPlan({
               className="floor-note"
               onClick={(e) => {
                 e.stopPropagation();
+                if (tool !== 'select' && tool !== (note.kind === 'text' ? 'text' : 'note')) return;
                 setSelectedNoteId(note.id);
                 setSelectedRouteId(null);
                 onSelect(null);
@@ -784,6 +798,7 @@ export function FloorPlan({
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
+                if (note.kind === 'text') return;
                 const text = window.prompt(t('Megjegyzés módosítása:'), note.text);
                 if (text?.trim())
                   updateSheet((s) => ({
@@ -792,7 +807,7 @@ export function FloorPlan({
                   }));
               }}
             >
-              <rect
+              {note.kind !== 'text' && <rect
                 x="-7"
                 y="-17"
                 width={Math.max(
@@ -804,10 +819,11 @@ export function FloorPlan({
                 fill="#fffbe7"
                 stroke={note.id === selectedNoteId ? '#b79733' : '#eadfae'}
                 strokeWidth="1"
-              />
-              <text fill="#766534" fontSize="12" fontFamily="inherit">
+              />}
+              {note.kind === 'text' && <rect x="-4" y={-(note.fontSize ?? 18)} width={Math.max(30, note.text.split('\n').reduce((max, line) => Math.max(max, line.length), 0) * (note.fontSize ?? 18) * .65 + 8)} height={note.text.split('\n').length * (note.fontSize ?? 18) * 1.3} fill="transparent" stroke={note.id === selectedNoteId ? '#28775b' : 'none'} strokeDasharray="4 3" />}
+              <text fill={note.kind === 'text' ? note.color ?? '#222222' : '#766534'} fontSize={note.kind === 'text' ? note.fontSize ?? 18 : 12} fontFamily="inherit">
                 {note.text.split('\n').map((line, i) => (
-                  <tspan key={i} x="0" dy={i ? 18 : 0}>
+                  <tspan key={i} x="0" dy={i ? note.kind === 'text' ? (note.fontSize ?? 18) * 1.3 : 18 : 0}>
                     {line}
                   </tspan>
                 ))}
@@ -815,6 +831,11 @@ export function FloorPlan({
             </g>
           ))}
       </svg>
+      {selectedText && (tool === 'select' || tool === 'text') && <div className="floor-text-editor">
+        <label>{t('Szöveg')}<textarea aria-label={t('Szöveg')} value={selectedText.text} onChange={(e) => updateSheet((s) => ({ ...s, annotations: s.annotations.map((n) => n.id === selectedText.id ? { ...n, text: e.target.value } : n) }))} /></label>
+        <label>{t('Betűméret')}<input type="number" min="6" max="120" value={selectedText.fontSize ?? 18} onChange={(e) => { const size = Number(e.target.value); if (size >= 6 && size <= 120) updateSheet((s) => ({ ...s, annotations: s.annotations.map((n) => n.id === selectedText.id ? { ...n, fontSize: size } : n) })); }} /></label>
+        <label>{t('Szín')}<input type="color" value={selectedText.color ?? '#222222'} onChange={(e) => updateSheet((s) => ({ ...s, annotations: s.annotations.map((n) => n.id === selectedText.id ? { ...n, color: e.target.value } : n) }))} /></label>
+      </div>}
       <div className="floor-bottom-toolbar">
         <div className="floor-bottom-info">
           <span>
@@ -868,7 +889,7 @@ export function FloorPlan({
                 <small>{t('Töréspont: húzás · új pont: dupla kattintás')}</small>
               </>
             )}
-            {selectedNoteId && <span>{t('Megjegyzés · dupla kattintás: szerkesztés')}</span>}
+            {selectedNoteId && !selectedText && tool === 'note' && <span>{t('Megjegyzés · dupla kattintás: szerkesztés')}</span>}
             <button
               className="floor-delete-control"
               title={t('Eltávolítás a tervlapról')}

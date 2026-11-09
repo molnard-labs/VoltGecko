@@ -109,8 +109,8 @@ export function EditorSidebar({
       >
         <BookOpen size={20} />
         <span>
-          <strong>Schneider Electric</strong>
-          <small>{t('Schneider terméktár')}</small>
+          <strong>Schneider · Tracon</strong>
+          <small>{t('Gyártói terméktár')}</small>
         </span>
       </button>
       {(view === 'floor' || view === 'board') && (

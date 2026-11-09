@@ -1,5 +1,6 @@
 const translations: Record<string, string> = {
   'Schneider terméktár':'Schneider product library',
+  'Gyártói terméktár':'Manufacturer product library',
   'Easy9 Pro és kompatibilis termékek':'Easy9 Pro and compatible products',
   '{reference} hozzáadva.':'Added {reference}.',
   'Nincs elegendő szabad modulhely. A készülék az eszközlistában megmaradt, elhelyezésre vár.':'There is not enough free module space. The device is kept in the device list, awaiting placement.',
@@ -19,6 +20,7 @@ const translations: Record<string, string> = {
   'Gyártói termékkönyvtár': 'Manufacturer product library',
   'Offline elérhető, gyártói adatokkal.': 'Available offline with manufacturer data.',
   'Termékkönyvtár bezárása': 'Close product library',
+  'Főáramköri leágazó': 'Main line distribution terminal',
   'Termék keresése': 'Search products',
   'Cikkszám, név vagy műszaki adat…': 'Reference, name or technical specification…',
   'Kategória': 'Category',

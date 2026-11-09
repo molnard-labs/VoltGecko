@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { ProjectDocument } from '../src/types';
 
 const outputDir = path.resolve('tmp/products-results');
-const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length;
+const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length + 7;
 const library = (page: Page) => page.getByRole('dialog', { name: 'Gyártói termékkönyvtár', exact: true });
 const findProduct = async (dialog: Locator, reference: string) => {
   await dialog.getByRole('searchbox').fill(reference);
@@ -147,7 +147,7 @@ test('searches and filters the complete offline catalogue, paginates and transla
   await expect(page.locator('.manufacturer-library-button')).toBeFocused();
   await page.getByLabel('Nyelv / Language', { exact: true }).selectOption('en');
   await page.locator('.view-tabs').getByRole('button', { name: 'Distribution board', exact: true }).click();
-  await page.getByRole('button', { name: 'Schneider product library', exact: true }).click();
+  await page.getByRole('button', { name: /Manufacturer product library/ }).click();
   const english = page.getByRole('dialog', { name: 'Manufacturer product library', exact: true });
   await expect(english.getByRole('status')).toHaveText(`${catalogCount} products`);
   await expect(english.getByRole('searchbox')).toHaveAttribute('placeholder', 'Reference, name or technical specification…');
@@ -216,4 +216,23 @@ test.describe('phone catalogue', () => {
     await expect.poll(async () => (await readDocument(page)).data.devices.find(device => device.product?.reference === 'EZ9A29924')?.moduleWidth).toBe(.5);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   });
+});
+
+test('places a photographed Tracon terminal with its actual width and common screws', async ({ page }) => {
+  await openPlanner(page);
+  await page.locator('.manufacturer-library-button').click();
+  const dialog = library(page);
+  const card = await findProduct(dialog, 'FLECU-25-16-2ZS');
+  await expect(card.locator('img')).toHaveAttribute('src', /^data:image\/webp;base64,/);
+  await expect(card.locator('.product-specs')).toContainText('21,3 mm');
+  await card.getByRole('button', { name: 'Hozzáadás az elosztóhoz: FLECU-25-16-2ZS' }).click();
+  await expect.poll(async () => (await readDocument(page)).data.devices.find(item => item.product?.reference === 'FLECU-25-16-2ZS')).toBeTruthy();
+  const saved = (await readDocument(page)).data.devices.find(item => item.product?.reference === 'FLECU-25-16-2ZS')!;
+  expect(saved.moduleWidth).toBeCloseTo(21.3 / 18);
+  expect(saved.electrical?.commonPoleGroups).toEqual([[0, 1]]);
+  await dialog.getByRole('button', { name: 'Termékkönyvtár bezárása' }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
+  await page.getByRole('button', { name: 'Új DIN-sor' }).click();
+  await page.getByRole('combobox', { name: '2. sor: készülék elhelyezése' }).selectOption(saved.id);
+  await expect(page.locator(`[data-device-id="${saved.id}"] image`)).toHaveAttribute('href', /^data:image\/webp;base64,/);
 });

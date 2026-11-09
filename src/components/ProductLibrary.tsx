@@ -13,7 +13,7 @@ const PAGE_SIZE = 40;
 const categoryLabels: Record<CatalogProduct['category'], string> = {
   mcb: 'Kismegszakító', rccb: 'FI-relé', rcbo: 'Kombinált védelem',
   spd: 'Túlfeszültség-védelem', switch: 'Főkapcsoló', control: 'Vezérlés',
-  accessory: 'Tartozék', enclosure: 'Elosztószekrény',
+  terminal: 'Főáramköri leágazó', accessory: 'Tartozék', enclosure: 'Elosztószekrény',
 };
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const number = (value: number) => value.toLocaleString(getLocale());
@@ -22,7 +22,7 @@ const actionLabel = (product: CatalogProduct) => product.mounting === 'enclosure
 function officialSource(source: string): string | undefined {
   try {
     const url = new URL(source);
-    return url.protocol === 'https:' && ['se.com', 'schneider-electric.com'].some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)) ? url.href : undefined;
+    return url.protocol === 'https:' && ['se.com', 'schneider-electric.com', 'traconelectric.com'].some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)) ? url.href : undefined;
   } catch { return undefined; }
 }
 
@@ -49,6 +49,7 @@ function ProductCard({ product, onAdd, language }: { product: CatalogProduct; on
     <div className="product-card-top"><span className="product-range">{product.range}</span><span className="product-category">{t(categoryLabels[product.category])}</span></div>
     <strong className="product-reference">{product.reference}</strong>
     <h3>{product.name[language]}</h3>
+    {product.image && <img className="product-image" src={product.image} alt={`${product.manufacturer} ${product.reference}`} loading="lazy" />}
     {product.description[language] && <p className="product-description">{product.description[language]}</p>}
     {specs.length > 0 && <dl className="product-specs">{specs.map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>}
     <div className="product-source">
