@@ -3,5 +3,3 @@
 .floor-board-picker select:focus-visible,.floor-board-marker:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .floor-board-marker{cursor:pointer}
 .floor-board-marker.selected>rect{stroke-width:3;filter:drop-shadow(0 1px 3px #35704c45)}
-.floor-control-header>.drawing-tools>button.floor-board-tool{width:auto;min-width:0;max-width:100%;padding:0 11px;gap:7px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;font-size:.875rem;font-weight:600}
-.floor-board-tool svg{flex-shrink:0}

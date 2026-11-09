@@ -678,7 +678,7 @@ export default function App() {
                               aria-label={drawingTool.label}
                               title={drawingTool.label}
                               disabled={drawingTool.id === 'board' && data.boards.length === 0}
-                              className={`${tool === drawingTool.id ? 'active' : ''}${drawingTool.id === 'board' ? ' floor-board-tool' : ''}`.trim()}
+                              className={tool === drawingTool.id ? 'active' : ''}
                               aria-pressed={tool === drawingTool.id}
                               onClick={() => {
                                 setTool(drawingTool.id as Tool);
@@ -690,7 +690,6 @@ export default function App() {
                               }}
                             >
                               <drawingTool.icon size={19} />
-                              {drawingTool.id === 'board' && <span>{drawingTool.label}</span>}
                             </button>
                           ))}
                         </div>

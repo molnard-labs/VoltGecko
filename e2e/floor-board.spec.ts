@@ -7,12 +7,17 @@ test('places, moves, saves and opens the chosen distribution board from the floo
   await page.addInitScript(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }));
   await page.goto('/');
   await chooseSample(page);
-  await expect(page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).getByText('Elosztó elhelyezése')).toBeVisible();
+  const placeBoard = page.getByRole('button', { name:'Elosztó elhelyezése', exact:true });
+  await expect(placeBoard).toBeVisible();
+  await expect(placeBoard).toHaveAttribute('title', 'Elosztó elhelyezése');
+  await expect(placeBoard).toHaveText('');
+  await expect(placeBoard).toHaveAttribute('aria-pressed', 'false');
   await page.locator('.view-tabs').getByRole('button', { name:'Elosztó', exact:true }).click();
   page.once('dialog', dialog => dialog.accept('Műhely elosztó'));
   await page.getByRole('button', { name:'Új elosztó', exact:true }).click();
   await page.locator('.view-tabs').getByRole('button', { name:'Alaprajz', exact:true }).click();
-  await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).click();
+  await placeBoard.click();
+  await expect(placeBoard).toHaveAttribute('aria-pressed', 'true');
   await page.getByLabel('Elhelyezendő elosztó', { exact:true }).selectOption({ label:'Műhely elosztó' });
   await page.locator('.floor-svg').click({ position:{x:420,y:300} });
   const marker = page.getByRole('button', { name:'Elosztó megnyitása: Műhely elosztó' });
@@ -63,7 +68,7 @@ test('opens a board marker with a touch tap', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, hasTouch:true, isMobile:true, viewport:{width:320,height:844} });
   const page = await context.newPage();
   await page.goto('/'); await chooseSample(page);
-  await expect(page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).getByText('Elosztó elhelyezése')).toBeVisible();
+  await expect(page.getByRole('button', { name:'Elosztó elhelyezése', exact:true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).tap();
   const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
