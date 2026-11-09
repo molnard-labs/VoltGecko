@@ -1,2 +1,8 @@
 .wiring-endpoint-handle { fill: transparent; stroke: var(--focus); stroke-width: 2.5px; stroke-dasharray: 3 2; cursor: grab; pointer-events: all; touch-action: none; }
 .wiring-endpoint-handle:active { cursor: grabbing; }
+.wiring-segment-handle { stroke: transparent; stroke-width: 16px; pointer-events: stroke; touch-action: none; }
+.wiring-segment-handle.horizontal { cursor: ns-resize; }
+.wiring-segment-handle.vertical { cursor: ew-resize; }
+.wiring-route-handle { touch-action: none; }
+.wiring-route-handle.selected { fill: var(--focus, #096777); stroke: white; stroke-width: 2.5px; }
+.wiring-route-handle:focus-visible, .wiring-segment-handle:focus-visible { outline: none; stroke: var(--focus, #096777); stroke-width: 3px; }

@@ -22,6 +22,8 @@ import { WiringDiagram, useWiringDiagram } from './board-wiring/WiringDiagram';
 import { EndpointSelect, WirePanel } from './board-wiring/WirePanel';
 import type { WireEstimate } from './board-wiring/WirePanel';
 import { SourcesPanel } from './board-wiring/SourcesPanel';
+import { insertWireBend } from './board-wiring/wireEditing';
+import './board-wiring/wire-toolbar.css';
 
 interface Props {
   data: ProjectData;
@@ -186,6 +188,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             <button type="button" className="quiet wiring-mode-toggle" aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}>{t('Rácshoz illesztés')}</button>
             {snapToGrid && <span className="subtle">{t('Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.')}</span>}
           </div>
+          <div className="wiring-diagram-container">
           <WiringDiagram
             data={data}
             board={board}
@@ -199,8 +202,23 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             onSelectDevice={selectDevice}
             onSelectEndpoint={selectEndpoint}
             onPlaceDevice={onPlaceDevice}
+            onNotify={onNotify}
             onReconnectEndpoint={(id, side, endpoint) => patchWire(id, { [side]: endpoint })}
           />
+          {selectedWire && selectedRoute.length >= 2 && (
+            <div className="wiring-floating-tools">
+              <button
+                type="button"
+                aria-label={t('Töréspont hozzáadása')}
+                title={t('Töréspont hozzáadása')}
+                onClick={() => patchWire(selectedWire.id, { points: insertWireBend(selectedRoute, snapToGrid) })}
+              >
+                <Plus size={18} aria-hidden="true" />
+                <span>{t('Töréspont hozzáadása')}</span>
+              </button>
+            </div>
+          )}
+          </div>
           <p className="subtle">
             {t(
               'Válassz két konkrét csatlakozópontot a rajzon vagy a listákban, majd hozd létre a vezetéket. A kattintási sorrend szabad.'
@@ -268,6 +286,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
                 setWireId(undefined);
               }}
               onClearError={clearError}
+              onNotify={onNotify}
               estimate={estimate}
               onEstimateChange={setEstimate}
             />

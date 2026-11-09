@@ -1,4 +1,4 @@
-import { Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2 } from 'lucide-react';
 import { t, getLocale } from '../../i18n';
 import { endpointConductor, estimateVoltageDrop, wiringEndpointLabel } from '../../data/boardWiring';
 import { wireColorAppearance, wireColorPresets } from '../../data/wireColors';
@@ -6,7 +6,7 @@ import type { BoardWire, Point, ProjectData, WiringEndpoint } from '../../types'
 import { CableFields } from '../ElectricalDeviceFields';
 import { encodeEndpoint, parseEndpoint } from './endpoints';
 import type { EndpointOption } from './endpoints';
-import { insertWireBend, orthogonalRoute, removeWireBend } from './wireEditing';
+import { moveWireBend, removeWireBend } from './wireEditing';
 
 interface EndpointSelectProps {
   data: ProjectData;
@@ -64,6 +64,7 @@ interface Props {
   onPatchWire: (id: string, patch: Partial<BoardWire>) => void;
   onDeleteWire: (id: string) => void;
   onClearError: () => void;
+  onNotify: (message: string) => void;
   estimate?: WireEstimate;
   onEstimateChange: (estimate: WireEstimate) => void;
 }
@@ -79,6 +80,7 @@ export function WirePanel({
   onPatchWire,
   onDeleteWire,
   onClearError,
+  onNotify,
   estimate,
   onEstimateChange
 }: Props) {
@@ -260,7 +262,7 @@ export function WirePanel({
           </p>
           <details open>
             <summary>{t('Nyomvonal és felirat helye')}</summary>
-            <p className="subtle">{t('A rajzon húzd a köröket a vezeték alakításához. Töréspontot itt szúrhatsz be vagy törölhetsz.')}</p>
+            <p className="subtle">{t('A rajzon húzd a pontokat vagy szakaszokat a vezeték alakításához. A töréspontokat itt is törölheted.')}</p>
             {selectedRoute.slice(1, -1).map((point, index) => (
               <div className="wiring-coordinate" key={index}>
                 <span>{t('{number}. töréspont', { number: index + 1 })}</span>
@@ -272,9 +274,8 @@ export function WirePanel({
                       type="number"
                       value={point[axis]}
                       onChange={(e) => {
-                        const route = selectedRoute.slice();
-                        route[index + 1] = { ...route[index + 1], [axis]: Number(e.target.value) };
-                        onPatchWire(selectedWire.id, { points: (snapToGrid ? orthogonalRoute(route, selectedRoute) : route).slice(1, -1) });
+                        const next = { ...point, [axis]: Number(e.target.value) };
+                        onPatchWire(selectedWire.id, { points: moveWireBend(selectedRoute, index + 1, next, snapToGrid).route.slice(1, -1) });
                       }}
                     />
                   </label>
@@ -282,19 +283,17 @@ export function WirePanel({
                 <button
                   className="icon-button"
                   aria-label={t('{number}. töréspont törlése', { number: index + 1 })}
-                  onClick={() => onPatchWire(selectedWire.id, { points: removeWireBend(selectedRoute, index, snapToGrid) })}
+                  onClick={() => {
+                    const points = removeWireBend(selectedRoute, index, snapToGrid);
+                    if (points.length === selectedRoute.length - 2 && points.every((point, i) => point.x === selectedRoute[i + 1].x && point.y === selectedRoute[i + 1].y)) {
+                      onNotify(t('A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.'));
+                    } else onPatchWire(selectedWire.id, { points });
+                  }}
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
             ))}
-            <button
-              className="quiet"
-              onClick={() => onPatchWire(selectedWire.id, { points: insertWireBend(selectedRoute, snapToGrid) })}
-            >
-              <Plus size={14} />
-              {t('Töréspont hozzáadása')}
-            </button>
             <div className="wiring-coordinate">
               <span>{t('Felirat helye')}</span>
               {(['x', 'y'] as const).map((axis) => (

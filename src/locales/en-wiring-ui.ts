@@ -1,4 +1,8 @@
 const messages:Record<string,string>={
+  'A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.':'This bend cannot be deleted: at least one corner is needed between the endpoints.',
+  '{number}. töréspont kijelölése':'Select bend {number}',
+  '{number}. vezetékszakasz mozgatása':'Move wire segment {number}',
+  'A rajzon húzd a pontokat vagy szakaszokat a vezeték alakításához. A töréspontokat itt is törölheted.':'Drag points or segments on the drawing to shape the wire. You can also delete bends here.',
   '{code}: A csatlakozók rajza sematikus; a tényleges kapcsok eltérhetnek. A gyártó bekötési rajza az irányadó.':'{code}: The terminal drawing is schematic; actual terminals may differ. Follow the manufacturer’s wiring diagram.',
   '{code}: A gyártó nem jelöl ki N-pólust; a beállított vezetőszerepeket ellenőrizd.':'{code}: The manufacturer does not designate a neutral pole; check the assigned conductor roles.',
   'A pólusszám módosítása előtt válaszd le a készülék vezetékeit.':'Disconnect the device wires before changing its pole count.',

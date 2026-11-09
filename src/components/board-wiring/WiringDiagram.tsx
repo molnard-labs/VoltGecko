@@ -22,7 +22,7 @@ import type {
 import { encodeEndpoint, sameEndpoint } from './endpoints';
 import { roundedWirePath } from './wirePath';
 import './wire-endpoints.css';
-import { orthogonalRoute, snapWirePoint, WIRING_GRID_SIZE } from './wireEditing';
+import { moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend, WIRING_GRID_SIZE } from './wireEditing';
 
 // Resolve only bundled catalog images by both manufacturer and reference. The
 // catalog uses embedded image data, so the drawing's SVG export remains portable.
@@ -33,11 +33,15 @@ const catalogImages = new Map(
 );
 
 type Drag = {
-  kind: 'point' | 'label' | 'bus' | 'infeed' | 'infeed-label';
+  kind: 'point' | 'segment' | 'label' | 'bus' | 'infeed' | 'infeed-label';
   id: string;
   index?: number;
   point: Point;
   delta: Point;
+  initialRoute?: Point[];
+  clientStart?: Point;
+  moved?: boolean;
+  viewport?: { x: number; y: number; width: number; height: number };
 };
 type DeviceDrag = {
   id: string;
@@ -63,7 +67,9 @@ export function useWiringDiagram(
   wiring: BoardWiring,
   { patchWire, patchBus, patchInfeed, placeDevice, snapToGrid }: WiringChanges
 ) {
-  const [drag, setDrag] = useState<Drag>();
+  const [drag, setDragState] = useState<Drag>();
+  const dragRef = useRef<Drag | undefined>(undefined);
+  const setDrag = (value: Drag | undefined) => { dragRef.current = value; setDragState(value); };
   const [deviceDrag, setDeviceDrag] = useState<DeviceDrag>();
   const deviceDragRef = useRef<DeviceDrag | undefined>(undefined);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -203,18 +209,15 @@ export function useWiringDiagram(
     ).slice(1, -1);
     // Normalize saved paths visually without mutating project data. This also
     // makes the displayed bend indices match what a later drag will edit.
-    const points = snapToGrid && wire.points
+    const points = wire.points
       ? orthogonalRoute([first, ...storedPoints, last]).slice(1, -1)
       : storedPoints;
     const original = [first, ...points, last];
-    const moved = [
-      first,
-      ...points.map((point, i) =>
-        drag?.kind === 'point' && drag.id === wire.id && drag.index === i ? drag.point : point
-      ),
-      last
-    ];
-    const result = snapToGrid && drag?.kind === 'point' && drag.id === wire.id ? orthogonalRoute(moved, original) : moved;
+    const result = drag?.id === wire.id && drag.moved && drag.initialRoute && drag.index !== undefined
+      ? drag.kind === 'point' ? moveWireBend(drag.initialRoute, drag.index, drag.point, snapToGrid).route
+        : drag.kind === 'segment' ? moveWireSegment(drag.initialRoute, drag.index, drag.point, snapToGrid).route
+        : original
+      : original;
     routes.set(wire.id, result);
     return result;
   };
@@ -288,17 +291,28 @@ export function useWiringDiagram(
     }
     return { handled: true };
   };
-  const startDrag = (event: PointerEvent, kind: Drag['kind'], id: string, point: Point, index?: number) => {
+  const startDrag = (event: PointerEvent, kind: Drag['kind'], id: string, point: Point, index?: number, initialRoute?: Point[]) => {
     if (event.button !== 0 || deviceDragRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     svgRef.current?.setPointerCapture(event.pointerId);
     const cursor = svgPoint(event.clientX, event.clientY);
-    setDrag({ kind, id, index, point, delta: { x: point.x - cursor.x, y: point.y - cursor.y } });
+    const view = svgRef.current!.viewBox.baseVal;
+    setDrag({ kind, id, index, point, delta: { x: point.x - cursor.x, y: point.y - cursor.y },
+      ...(initialRoute ? { initialRoute: initialRoute.map(item => ({ ...item })), clientStart: { x: event.clientX, y: event.clientY }, moved: false,
+        viewport: { x: view.x, y: view.y, width: view.width, height: view.height } } : {}) });
+  };
+  const moveDrag = (event: PointerEvent) => {
+    const value = dragRef.current;
+    if (!value) return;
+    const cursor = svgPoint(event.clientX, event.clientY);
+    const point = { x: cursor.x + value.delta.x, y: cursor.y + value.delta.y };
+    const moved = value.clientStart ? value.moved || Math.hypot(event.clientX - value.clientStart.x, event.clientY - value.clientStart.y) >= 3 : undefined;
+    setDrag({ ...value, point, moved });
   };
   const commitDrag = () => {
-    if (!drag) return;
-    const value = drag;
+    const value = dragRef.current;
+    if (!value) return;
     setDrag(undefined);
     if (value.kind === 'bus') patchBus(value.id, { offset: value.point });
     else if (value.kind === 'infeed') patchInfeed(value.id, { position: value.point });
@@ -316,9 +330,11 @@ export function useWiringDiagram(
       if (value.kind === 'label') {
         const anchor = wireLabelAnchor(wire, index);
         patchWire(value.id, { labelOffset: { x: value.point.x - anchor.x, y: value.point.y - anchor.y } });
-      } else {
-        const points = route(wire, index).slice(1, -1);
-        patchWire(value.id, { points });
+      } else if ((value.kind === 'point' || value.kind === 'segment') && value.initialRoute && value.index !== undefined && value.moved) {
+        const moved = value.kind === 'point' ? moveWireBend(value.initialRoute, value.index, value.point, snapToGrid)
+          : moveWireSegment(value.initialRoute, value.index, value.point, snapToGrid);
+        patchWire(value.id, { points: moved.route.slice(1, -1) });
+        return { kind: value.kind, id: value.id, index: moved.index, point: moved.route[moved.index] };
       }
     }
   };
@@ -351,7 +367,7 @@ export function useWiringDiagram(
     }
   });
   // A live preview must not change its own coordinate origin or scroll extent.
-  const viewport = deviceDrag?.viewport ?? { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  const viewport = deviceDrag?.viewport ?? drag?.viewport ?? { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   const { width, height } = viewport;
   return {
     svgRef,
@@ -373,6 +389,8 @@ export function useWiringDiagram(
     wireLabelPoint,
     svgPoint,
     startDrag,
+    moveDrag,
+    patchWire,
     commitDrag,
     startDeviceDrag,
     moveDeviceDrag,
@@ -424,6 +442,7 @@ interface Props {
   onSelectDevice: (id: string | null) => void;
   onSelectEndpoint: (endpoint: WiringEndpoint) => void;
   onReconnectEndpoint: (id: string, side: 'from' | 'to', endpoint: WiringEndpoint) => void;
+  onNotify: (message: string) => void;
 }
 
 export function WiringDiagram({
@@ -439,7 +458,8 @@ export function WiringDiagram({
   onSelectWire,
   onSelectDevice,
   onSelectEndpoint,
-  onReconnectEndpoint
+  onReconnectEndpoint,
+  onNotify
 }: Props) {
   const pePatternId = `wiring-pe-${useId().replace(/:/g, '')}`;
   const deviceClipId = `wiring-device-${useId().replace(/:/g, '')}`;
@@ -464,6 +484,8 @@ export function WiringDiagram({
     wireLabelPoint,
     svgPoint,
     startDrag,
+    moveDrag,
+    patchWire,
     commitDrag,
     startDeviceDrag,
     moveDeviceDrag,
@@ -474,6 +496,36 @@ export function WiringDiagram({
   const invalidDevices = new Set(getBoardIssues(board, data.devices).map((issue) => issue.deviceId));
   const selectedWire = wiring.wires.find((wire) => wire.id === selectedWireId);
   const selectedRoute = selectedWire ? route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  const [selectedBend, setSelectedBend] = useState<{ wireId: string; index: number; point: Point }>();
+  useEffect(() => { setSelectedBend(undefined); }, [selectedWireId]);
+  // Inserting another point can shift indices. Keep the selection attached to
+  // its actual location and never delete an unrelated point after a route edit.
+  const selectedBendIndex = (() => {
+    if (!selectedBend || selectedBend.wireId !== selectedWireId) return -1;
+    const matches = (point: Point | undefined) => point?.x === selectedBend.point.x && point?.y === selectedBend.point.y;
+    if (selectedBend.index > 0 && selectedBend.index < selectedRoute.length - 1 && matches(selectedRoute[selectedBend.index])) return selectedBend.index;
+    return selectedRoute.findIndex((point, index) => index > 0 && index < selectedRoute.length - 1 && matches(point));
+  })();
+  const movingBendIndex = drag?.kind === 'point' && drag.moved && drag.initialRoute && drag.index !== undefined
+    ? moveWireBend(drag.initialRoute, drag.index, drag.point, snapToGrid).index : selectedBendIndex;
+  useEffect(() => {
+    const deleteSelectedBend = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' || event.defaultPrevented || !selectedWire || selectedBendIndex < 1 || drag || deviceDrag) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]'))) return;
+      const oldPoints = selectedRoute.slice(1, -1);
+      const nextPoints = removeWireBend(selectedRoute, selectedBendIndex - 1, snapToGrid);
+      event.preventDefault();
+      if (JSON.stringify(nextPoints) === JSON.stringify(oldPoints)) {
+        onNotify(t('A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.'));
+        return;
+      }
+      patchWire(selectedWire.id, { points: nextPoints });
+      setSelectedBend(undefined);
+    };
+    window.addEventListener('keydown', deleteSelectedBend);
+    return () => window.removeEventListener('keydown', deleteSelectedBend);
+  }, [selectedWire, selectedBendIndex, selectedRoute, snapToGrid, drag, deviceDrag, patchWire, onNotify]);
   // This drag is separate from bend/device dragging: capturing the pointer on
   // the SVG keeps touch drags working, and hit testing uses screen pixels.
   type EndpointDrag = { id: string; side: 'from' | 'to'; pointerId: number; start: Point; point: Point; moved: boolean };
@@ -587,17 +639,16 @@ export function WiringDiagram({
         aria-label={t('Elosztó részletes huzalozási rajza')}
         onPointerMove={(event) => {
           if (moveEndpointDrag(event)) return;
-          if (!moveDeviceDrag(event) && drag) {
-            const point = svgPoint(event.clientX, event.clientY);
-            const next = { x: point.x + drag.delta.x, y: point.y + drag.delta.y };
-            setDrag({ ...drag, point: snapToGrid && drag.kind === 'point' ? snapWirePoint(next) : next });
-          }
+          if (!moveDeviceDrag(event) && drag) moveDrag(event);
         }}
         onPointerUp={(event) => {
           if (finishEndpointDrag(event)) return;
           const completed = commitDeviceDrag(event.pointerId);
           if (completed.clicked) onSelectDevice(completed.clicked);
-          if (!completed.handled) commitDrag();
+          if (!completed.handled) {
+            const moved = commitDrag();
+            if (moved?.kind === 'point') setSelectedBend({ wireId: moved.id, index: moved.index, point: moved.point });
+          }
         }}
         onPointerCancel={(event) => {
           if (endpointDragRef.current?.pointerId === event.pointerId) stopEndpointDrag();
@@ -856,6 +907,29 @@ export function WiringDiagram({
           ) : null;
         })}
         {hasIllustrativeImage && <text x={frame.x + 18} y={frame.y + 27} fontSize={13} fill="#365746"><title>{t('Termékcsalád illusztrációja')}</title>{t('I: termékcsalád illusztrációja')}</text>}
+        {selectedWire && selectedRoute.slice(0, -1).map((point, index) => {
+          const next = selectedRoute[index + 1];
+          if (point.x === next.x && point.y === next.y) return null;
+          return <line key={index} className={`wiring-segment-handle ${point.y === next.y ? 'horizontal' : 'vertical'}`}
+            data-testid={`wire-segment-${index}`} x1={point.x} y1={point.y} x2={next.x} y2={next.y}
+            role="button" tabIndex={0} aria-label={t('{number}. vezetékszakasz mozgatása', { number: index + 1 })}
+            onKeyDown={(event) => {
+              const horizontal = point.y === next.y;
+              const direction = horizontal ? (event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0)
+                : (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0);
+              if (!direction) return;
+              event.preventDefault();
+              const delta = direction * (snapToGrid ? WIRING_GRID_SIZE : 1);
+              const center = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+              const target = horizontal ? { ...center, y: center.y + delta } : { ...center, x: center.x + delta };
+              patchWire(selectedWire.id, { points: moveWireSegment(selectedRoute, index, target, snapToGrid).route.slice(1, -1) });
+              setSelectedBend(undefined);
+            }}
+            onPointerDown={(event) => {
+              setSelectedBend(undefined);
+              startDrag(event, 'segment', selectedWire.id, { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }, index, selectedRoute);
+            }} />;
+        })}
         {selectedWire && (['from', 'to'] as const).map((side) => {
           const point = endpointDrag?.id === selectedWire.id && endpointDrag.side === side && endpointDrag.moved
             ? endpointDrag.point : endpointPoint(selectedWire[side]);
@@ -870,13 +944,33 @@ export function WiringDiagram({
             .slice(1, -1)
             .map((point, index) => (
               <circle
-                className="wiring-route-handle"
+                className={`wiring-route-handle ${movingBendIndex === index + 1 ? 'selected' : ''}`}
                 data-testid={`wire-bend-${index}`}
                 key={index}
                 cx={point.x}
                 cy={point.y}
                 r={7}
-                onPointerDown={(event) => startDrag(event, 'point', selectedWire.id, point, index)}
+                role="button" tabIndex={0}
+                aria-label={t('{number}. töréspont kijelölése', { number: index + 1 })}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault(); setSelectedBend({ wireId: selectedWire.id, index: index + 1, point });
+                    return;
+                  }
+                  const step = snapToGrid ? WIRING_GRID_SIZE : 1;
+                  const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+                  const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+                  if (!dx && !dy) return;
+                  event.preventDefault();
+                  const moved = moveWireBend(selectedRoute, index + 1, { x: point.x + dx, y: point.y + dy }, snapToGrid);
+                  patchWire(selectedWire.id, { points: moved.route.slice(1, -1) });
+                  setSelectedBend({ wireId: selectedWire.id, index: moved.index, point: moved.route[moved.index] });
+                }}
+                onPointerDown={(event) => {
+                  event.currentTarget.focus({ preventScroll: true });
+                  setSelectedBend({ wireId: selectedWire.id, index: index + 1, point });
+                  startDrag(event, 'point', selectedWire.id, point, index + 1, selectedRoute);
+                }}
               />
             ))}
       </svg>
