@@ -1,4 +1,7 @@
 const messages:Record<string,string>={
+  '{code}: A csatlakozók rajza sematikus; a tényleges kapcsok eltérhetnek. A gyártó bekötési rajza az irányadó.':'{code}: The terminal drawing is schematic; actual terminals may differ. Follow the manufacturer’s wiring diagram.',
+  '{code}: A gyártó nem jelöl ki N-pólust; a beállított vezetőszerepeket ellenőrizd.':'{code}: The manufacturer does not designate a neutral pole; check the assigned conductor roles.',
+  'A pólusszám módosítása előtt válaszd le a készülék vezetékeit.':'Disconnect the device wires before changing its pole count.',
   'Rácshoz illesztés':'Snap to grid',
   'Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.':'Dragged bends snap to the grid and the wire stays orthogonal.',
   'A rajzon húzd a köröket a vezeték alakításához. Töréspontot itt szúrhatsz be vagy törölhetsz.':'Drag the circles on the diagram to shape the wire. Add or remove bends here.',

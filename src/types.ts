@@ -33,6 +33,8 @@ export interface DeviceElectrical {
   poles: Conductor[]; role?:'supply'|'main'|'mcb'|'rccb'|'rcbo'|'spd'|'contactor'|'meter'|'terminal'|'mpcb'|'outlet';
   phase?:Phase; currentA?:number; curve?:string; residualCurrentMa?:number; residualType?:string; spdClass?:string;
   group?:string;
+  /** Left-to-right drawing order as logical pole indices; preserves existing wire endpoints. */
+  physicalPoleOrder?:number[];
   /** Screw indices known to be electrically common inside a terminal block. */
   commonPoleGroups?:number[][];
 }

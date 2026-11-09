@@ -1,4 +1,4 @@
-import { effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
+import { devicePhysicalPoleOrder, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { t } from '../../i18n';
 import type { BoardWire, ProjectData, WiringEndpoint } from '../../types';
 
@@ -48,7 +48,7 @@ export function getEndpointOptions(data: ProjectData): EndpointOption[] {
     ]);
     for (const device of data.devices.filter((d) => ids.has(d.id) && d.kind !== 'blank'))
       for (const side of ['top', 'bottom'] as const)
-        effectiveDevicePoles(device).forEach((_, pole) => {
+        devicePhysicalPoleOrder(device).forEach((pole) => {
           const value: WiringEndpoint = { kind: 'device', deviceId: device.id, side, pole };
           endpoints.push({ value, text: wiringEndpointLabel(data, value), group: cabinet.id });
         });

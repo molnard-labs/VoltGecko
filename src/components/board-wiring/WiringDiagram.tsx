@@ -3,7 +3,7 @@ import type { PointerEvent } from 'react';
 import { GripHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import { getBoardIssues } from '../../data/boardPlacement';
-import { effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
+import { devicePhysicalPoleOrder, effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { automaticWireRoute } from '../../data/boardWireRouting';
 import type { RoutingTerminal, WiringObstacle } from '../../data/boardWireRouting';
 import { defaultWireColor, GREEN_YELLOW, wireColorAppearance } from '../../data/wireColors';
@@ -151,9 +151,10 @@ export function useWiringDiagram(
       const position = devicePositions.get(endpoint.deviceId),
         device = devicesById.get(endpoint.deviceId);
       if (position && device) {
-        const count = effectiveDevicePoles(device).length;
+        const order = devicePhysicalPoleOrder(device), count = order.length;
+        const physicalPole = endpoint.pole === undefined ? -1 : order.indexOf(endpoint.pole);
         return {
-          x: position.x + (endpoint.pole === undefined || !count ? 0.5 : (endpoint.pole + 0.5) / count) * position.w,
+          x: position.x + (physicalPole < 0 || !count ? 0.5 : (physicalPole + 0.5) / count) * position.w,
           y: position.y + (endpoint.side === 'bottom' ? 100 : 0)
         };
       }
@@ -751,11 +752,11 @@ export function WiringDiagram({
               </foreignObject>
               {device.kind !== 'blank' &&
                 (['top', 'bottom'] as const).flatMap((side) =>
-                  effectiveDevicePoles(device).map((pole, index) =>
+                  devicePhysicalPoleOrder(device).map((index) =>
                     terminal(
                       { kind: 'device', deviceId: id, side, pole: index },
                       endpointPoint({ kind: 'device', deviceId: id, side, pole: index }),
-                      pole
+                      effectiveDevicePoles(device)[index]
                     )
                   )
                 )}

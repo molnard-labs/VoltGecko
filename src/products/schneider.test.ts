@@ -3,7 +3,7 @@ import { decodeProject, encodeProject } from '../data/archive';
 import { checkpoint, createProject } from '../data/project';
 import { getBoardIssues } from '../data/boardPlacement';
 import { setLanguage } from '../i18n';
-import { addProductToProject } from './factory';
+import { addProductToProject, createDeviceFromProduct } from './factory';
 import { SCHNEIDER_PRODUCTS, SCHNEIDER_SOURCE } from './schneider';
 import source from './schneider-source.json';
 
@@ -15,6 +15,19 @@ const find = (reference: string) => {
 afterEach(() => setLanguage('hu'));
 
 describe('Schneider official offer normalization', () => {
+  it('creates the verified Easy9 residual-current devices with neutral on the left', () => {
+    for (const reference of ['EZ9R49225','EZ9R49240','EZ9R49263','EZ9D55606','EZ9D55610','EZ9D55613','EZ9D55616','EZ9D55620','EZ9D55625']) {
+      const product = find(reference);
+      expect(createDeviceFromProduct(product, []).electrical).toEqual({ role: product.category, poles: ['N', 'L'] });
+    }
+    for (const reference of ['EZ9R49425','EZ9R49440','EZ9R49463','EZ9R89463','EZ9D55710','EZ9D55713','EZ9D55716','EZ9D55720','EZ9D55725']) {
+      const product = find(reference);
+      expect(createDeviceFromProduct(product, []).electrical).toEqual({ role: product.category, poles: ['N', 'L1', 'L2', 'L3'] });
+    }
+    // Pole count alone does not identify a neutral on a breaker or switch.
+    expect(find('EZ9F57216').electrical).toBeUndefined();
+    expect(find('EZ9S16440').electrical).toBeUndefined();
+  });
   it('uses exact reference photographs when available and identifies catalog illustrations', () => {
     for (const product of SCHNEIDER_PRODUCTS) {
       expect(product.image, product.reference).toMatch(/^data:image\/webp;base64,/);

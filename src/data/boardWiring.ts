@@ -1,5 +1,7 @@
 import { t } from '../i18n';
 import type { Board, CableDetails, Circuit, Conductor, Device, Phase, ProjectData, WiringEndpoint } from '../types';
+import { getBoardTerminalWarnings } from './boardTerminalWarnings';
+import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
 
 const phases: Phase[] = ['L1', 'L2', 'L3'];
 
@@ -20,6 +22,26 @@ export function effectiveDevicePoles(device: Device): Conductor[] {
   if (device.kind === 'outlet') return ['L', 'N', 'PE'];
   if (device.kind === 'spd') return ['L1', 'L2', 'L3', 'N', 'PE'];
   return ['L'];
+}
+
+// Older projects use pole indices as persistent wire identities. Reorder only
+// their presentation, never those indices. Explicit physical order always wins.
+/** Left-to-right logical pole indices; never changes the stored conductor identities. */
+export function devicePhysicalPoleOrder(device: Device): number[] {
+  const poles = effectiveDevicePoles(device);
+  const identity = poles.map((_, index) => index);
+  if (device.electrical?.physicalPoleOrder) return device.electrical.physicalPoleOrder;
+  const isKnown = device.product?.manufacturer === 'Schneider Electric' && easy9NeutralPoleCount(device.product.reference) !== undefined;
+  const isGeneric = !device.electrical && !device.product && !device.model.trim() && (device.kind === 'rcd' || device.kind === 'rcbo');
+  const neutral = poles.indexOf('N');
+  return (isKnown || isGeneric) && neutral > 0 ? [neutral, ...identity.filter(index => index !== neutral)] : identity;
+}
+
+/** Record an inferred non-identity order when implicit data becomes explicit. */
+export function preservedPhysicalPoleOrder(device: Device): number[] | undefined {
+  if (device.electrical?.physicalPoleOrder) return [...device.electrical.physicalPoleOrder];
+  const order = devicePhysicalPoleOrder(device);
+  return order.some((pole, index) => pole !== index) ? order : undefined;
 }
 
 function findBus(data: ProjectData, id: string) {
@@ -57,7 +79,8 @@ export function wiringEndpointLabel(data: ProjectData, endpoint: WiringEndpoint)
   const conductor = endpointConductor(data, endpoint) ?? '?';
   if (endpoint.kind === 'device') {
     const device = data.devices.find((item) => item.id === endpoint.deviceId);
-    return `${device?.code ?? endpoint.deviceId} · ${t(endpoint.side === 'top' ? 'felső' : 'alsó')} ${endpoint.pole === undefined ? '?' : endpoint.pole + 1} (${conductor})`;
+    const physical = device && endpoint.pole !== undefined ? devicePhysicalPoleOrder(device).indexOf(endpoint.pole) : -1;
+    return `${device?.code ?? endpoint.deviceId} · ${t(endpoint.side === 'top' ? 'felső' : 'alsó')} ${physical < 0 ? '?' : physical + 1} (${conductor})`;
   }
   if (endpoint.kind === 'bus') {
     const bus = findBus(data, endpoint.busId);
@@ -95,7 +118,7 @@ export interface WiringIssue {
 
 /** Read-only topology checks. Imported loops remain intact and wire order is irrelevant. */
 export function getWiringIssues(data: ProjectData, board: Board): WiringIssue[] {
-  const issues: WiringIssue[] = getPhaseAssignmentIssues(data, board);
+  const issues: WiringIssue[] = [...getPhaseAssignmentIssues(data, board), ...getBoardTerminalWarnings(data, board)];
   if (!board.wiring) return issues;
   const devices = new Map(data.devices.map((device) => [device.id, device]));
   const keyOf = (endpoint: WiringEndpoint) => node(endpoint, devices);
@@ -499,5 +522,5 @@ export function assignConnectedPhase(data: ProjectData, from: WiringEndpoint, to
     (circuit) => circuit.protectionDeviceId === device.id || circuit.id === device.circuitId
   );
   if (circuits.some((circuit) => circuit.phase && circuit.phase !== phase)) return;
-  device.electrical = { ...device.electrical, poles, phase };
+  device.electrical = { ...device.electrical, poles, phase, physicalPoleOrder: preservedPhysicalPoleOrder(device) };
 }

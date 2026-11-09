@@ -1,5 +1,20 @@
 import source from './schneider-source.json';
 import type { CatalogProduct } from './types';
+import type { DeviceElectrical } from '../types';
+import { easy9NeutralPoleCount } from './easy9PoleOrder';
+
+// Left-to-right neutral position is documented for these Easy9 devices:
+// https://www.se.com/hu/hu/product/download-pdf/EZ9R49240
+// https://shop.borosesfiai.hu/custom/ivill/image/data/srattached/18ca388c406a864b08d438d063098e4c_SCHNEIDER-EZ9R49440-Adatlap.pdf
+// https://shop.borosesfiai.hu/custom/ivill/image/data/srattached/482347cde385601410072b3da6b8bf7f_SCHNEIDER-EZ9D55716-Adatlap.pdf
+// Do not infer neutral position from pole count for other product families.
+function verifiedEasy9Electrical(p: ManufacturerFact): DeviceElectrical | undefined {
+  if ((p.category !== 'rccb' && p.category !== 'rcbo') || p.family !== 'Easy9 Pro') return undefined;
+  const count = easy9NeutralPoleCount(p.sku);
+  const poles = count === 2 ? ['N', 'L'] as const
+    : count === 4 ? ['N', 'L1', 'L2', 'L3'] as const : undefined;
+  return poles ? { role: p.category, poles: [...poles] } : undefined;
+}
 
 // Each bundled image is matched to its exact manufacturer reference. Data URLs
 // keep the photos available offline and in exported standalone drawings.
@@ -97,6 +112,7 @@ export const SCHNEIDER_PRODUCTS:CatalogProduct[] = (source.products as Manufactu
   const illustration=illustrationKey && productImages[`./schneider-images/${illustrationKey}.webp`];
   return {
     reference:p.sku,manufacturer:'Schneider Electric',range,category:category(p),kind:kind(p),mounting:p.mountingType,
+    electrical:verifiedEasy9Electrical(p),
     image:exactImage || illustration,
     imageIllustrative:!exactImage && !!illustration,
     name:{hu:`${label[0]}${suffix?' · '+suffix:''}`,en:`${label[1]}${suffix?' · '+suffix:''}`},description:descriptions(p),

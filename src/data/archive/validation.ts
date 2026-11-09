@@ -92,6 +92,14 @@ function electrical(value: unknown) {
   if (value === undefined) return;
   object(value, 'Villamos adatok');
   poles(value.poles);
+  if (value.physicalPoleOrder !== undefined) {
+    array(value.physicalPoleOrder, 'Fizikai pólussorrend', 64);
+    const order = value.physicalPoleOrder;
+    const count = (value.poles as unknown[]).length;
+    if (order.length !== count || new Set(order).size !== count || order.some(index =>
+      typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= count))
+      fail('hibás fizikai pólussorrend.');
+  }
   if (value.commonPoleGroups !== undefined) {
     array(value.commonPoleGroups, 'Közös kapocscsoportok', 64);
     const grouped = new Set<number>();
