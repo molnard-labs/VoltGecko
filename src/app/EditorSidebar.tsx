@@ -6,6 +6,7 @@ import { getLocale, t } from '../i18n';
 import { AppearanceControls } from '../components/AppearanceControls';
 import { Brand } from '../components/Brand';
 import { DeviceSymbol } from '../components/Symbol';
+import { ReleaseInfo } from '../components/ReleaseInfo';
 import type { FloorPlanProps } from '../components/FloorPlan';
 import type { CatalogEntry, ProjectDocument } from '../types';
 import { getNavigation, type View } from './navigation';
@@ -200,11 +201,10 @@ export function EditorSidebar({
           <CircleHelp size={17} />
           {t('Útmutató és adatkezelés')}
         </button>
-        <span>
-          v{APP.version}
-          <span className="local-dot" />
-          {t('Saját adatok. Saját eszköz.')}
-        </span>
+        <div className="sidebar-release">
+          <span>v{APP.version}</span>
+          <ReleaseInfo compact />
+        </div>
       </div>
     </aside>
   );

@@ -20,8 +20,8 @@ async function expectExactLink(locator:Locator){
 test('the production stamp keeps its exact build commit across language changes, workspace navigation and offline reloads',async({page,context})=>{
   test.setTimeout(60_000);let remoteLookups=0;page.on('request',request=>{if(/https:\/\/(?:api\.)?github\.com\//.test(request.url()))remoteLookups++;});
   await page.goto('http://localhost:4173/');const start=page.locator('.start-footer .release-info');await expect(start).toBeVisible();const initial=await expectExactLink(start);expect(initial.development).toBe('false');
-  await page.getByLabel('Nyelv / Language',{exact:true}).selectOption('en');await expect(start).toContainText(initial.dirty==='true'?'Local, uncommitted version':'Last updated');expect(await stamp(start)).toEqual(initial);
-  await chooseSample(page);const editor=page.locator('.statusbar .release-info');await expect(editor).toBeVisible();expect(await expectExactLink(editor)).toEqual(initial);
+  await page.getByLabel('Nyelv / Language',{exact:true}).selectOption('en');await expect(start).toContainText(initial.dirty==='true'?'Local, uncommitted version':'Software last updated');expect(await stamp(start)).toEqual(initial);
+  await chooseSample(page);const editor=page.locator('.sidebar-release .release-info');await expect(editor).toBeVisible();await expect(page.locator('.sidebar-release')).toContainText('v0.1.0');await expect(page.locator('.sidebar-bottom')).not.toContainText('Your data. Your device.');expect(await expectExactLink(editor)).toEqual(initial);
   await page.evaluate(async()=>{await navigator.serviceWorker.ready;});await page.reload();await reopenRecentProject(page);await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
   await context.setOffline(true);await page.reload();await reopenRecentProject(page);expect(await expectExactLink(editor)).toEqual(initial);await expect(page.locator('.statusbar')).toContainText('Offline');expect(remoteLookups).toBe(0);
 });
@@ -30,6 +30,6 @@ test('the visible update stamp stays readable and wraps within a narrow phone',a
   await page.setViewportSize({width:320,height:740});await page.goto('/');await page.locator('.start-footer .release-info').scrollIntoViewIfNeeded();await expect(page.locator('.start-footer .release-info')).toBeVisible();
   expect(await page.locator('.release-info').evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-  await chooseSample(page);const release=page.locator('.statusbar .release-info');await expect(release).toBeVisible();
+  await chooseSample(page);await page.getByRole('button',{name:'Eszköztár megnyitása'}).click();const release=page.locator('.sidebar-release .release-info');await expect(release).toBeVisible();
   expect(await release.evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });

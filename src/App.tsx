@@ -27,7 +27,6 @@ import { assetFromFile, decodeProject, saveProjectFile } from './data/archive';
 import type { FloorPlanProps } from './components/FloorPlan';
 import { Brand } from './components/Brand';
 import { StartScreen, NewProjectForm } from './components/StartScreen';
-import { ReleaseInfo } from './components/ReleaseInfo';
 import { LinkedFileControl, type LinkedFileActions } from './components/LinkedFileControl';
 import { projectFilePicker } from './services/linkedFile';
 import { downloadBlob, safeFilename } from './services/files';
@@ -753,7 +752,6 @@ export default function App() {
                   </>
                 )}
               </span>
-              <ReleaseInfo compact />
             </footer>
           </main>
           <LazyFeature fallback={null}>
