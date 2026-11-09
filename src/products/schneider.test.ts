@@ -15,6 +15,20 @@ const find = (reference: string) => {
 afterEach(() => setLanguage('hu'));
 
 describe('Schneider official offer normalization', () => {
+  it('uses exact reference photographs when available and identifies catalog illustrations', () => {
+    for (const product of SCHNEIDER_PRODUCTS) {
+      expect(product.image, product.reference).toMatch(/^data:image\/webp;base64,/);
+    }
+    expect(find('EZ9F57102').image).toMatch(/^data:image\/webp;base64,/);
+    expect(find('EZ9F57102').imageIllustrative).toBe(false);
+    const breaker = find('EZ9F57104');
+    expect(breaker.image).toMatch(/^data:image\/webp;base64,/);
+    expect(breaker.imageIllustrative).toBe(true);
+    expect(find('EZ9F57204').image).not.toBe(breaker.image);
+    expect(find('LVSXDP113').image).toMatch(/^data:image\/webp;base64,/);
+    expect(find('LVSXDP113').imageIllustrative).toBe(true);
+    expect(find('A9A27062').image).toMatch(/^data:image\/webp;base64,/);
+  });
   it('contains exactly the explicit manufacturer references, with no invented variants or duplicates', () => {
     const references = SCHNEIDER_PRODUCTS.map(product => product.reference);
     expect(references).toHaveLength(260);

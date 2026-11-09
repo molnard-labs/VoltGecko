@@ -1,6 +1,39 @@
 import source from './schneider-source.json';
 import type { CatalogProduct } from './types';
 
+// Each bundled image is matched to its exact manufacturer reference. Data URLs
+// keep the photos available offline and in exported standalone drawings.
+const productImages = import.meta.glob<string>('./schneider-images/*.webp', {
+  eager: true,
+  query: '?inline',
+  import: 'default'
+});
+
+/** Catalogue photos are representative and labelled as illustrations in the UI.
+ * DIN devices are matched by pole count; cabinet pictures may differ in size. */
+function catalogueImage(p: ManufacturerFact): string | undefined {
+  const pole = p.poles?.toLowerCase();
+  if (['mcb', 'spd', 'rccb', 'rcbo', 'isolator'].includes(p.category)) return `${p.category}-${pole}`;
+  if (['shunt_trip', 'aux_contact', 'fault_contact', 'impulse_relay', 'voltage_relay', 'bell', 'busbar_pin_cover', 'locking_accessory'].includes(p.category)) return p.category;
+  if (p.category === 'contactor') return `contactor-${p.widthModules18}`;
+  if (p.category === 'busbar' && pole === '3p') return 'busbar';
+  if (p.category === 'busbar' && (pole === '1p' || pole === '4p')) return `busbar-${pole}`;
+  if (p.category === 'busbar_end_cap' && ['1p', '2p', '3p'].includes(pole ?? '')) return `busbar-endcap-${pole}`;
+  if (p.category === 'mounting_panel') return p.sku;
+  if (p.family === 'PrismaSeT XS' && p.category === 'enclosure') {
+    if (p.door === 'opaque') return 'prisma-case-opaque';
+    if (p.door === 'smoked') return 'prisma-case-smoked';
+  }
+  if (p.family === 'PrismaSeT XS' && p.category === 'spare_door' && p.door === 'opaque')
+    return 'prisma-door-opaque';
+  if (p.category === 'enclosure' && p.family === 'Easy9 EU' && p.rows && p.rows <= 3) {
+    const door = p.door === 'opaque' ? 'white' : p.door === 'smoked' ? 'smoke' : undefined;
+    if (door && (p.installation === 'surface' || p.installation === 'flush'))
+      return `eu-${p.installation}-${p.rows}-${door}`;
+  }
+  return undefined;
+}
+
 interface ManufacturerFact {
   sku:string; family:string; category:string; sourcePages:number[]; sourceEvidence:string;
   mountingType:CatalogProduct['mounting']; widthModules18?:number; widthMm?:number;
@@ -59,8 +92,13 @@ export const SCHNEIDER_PRODUCTS:CatalogProduct[] = (source.products as Manufactu
   const label=customNames[p.sku]??labels[p.category]??labels.enclosure_accessory;
   const suffix=[p.curve&&p.ratedCurrentA!==undefined?`${p.curve}${p.ratedCurrentA}`:p.ratedCurrentA!==undefined?`${p.ratedCurrentA} A`:'',p.poles??'',p.residualCurrentMa?`${p.residualType} ${p.residualCurrentMa} mA`:''].filter(Boolean).join(' · ');
   const range=p.family.replace(/ compatible accessory$/,'').replace(/^Compatible accessory$/,'Schneider Electric');
+  const exactImage=productImages[`./schneider-images/${p.sku}.webp`];
+  const illustrationKey=catalogueImage(p);
+  const illustration=illustrationKey && productImages[`./schneider-images/${illustrationKey}.webp`];
   return {
     reference:p.sku,manufacturer:'Schneider Electric',range,category:category(p),kind:kind(p),mounting:p.mountingType,
+    image:exactImage || illustration,
+    imageIllustrative:!exactImage && !!illustration,
     name:{hu:`${label[0]}${suffix?' · '+suffix:''}`,en:`${label[1]}${suffix?' · '+suffix:''}`},description:descriptions(p),
     ...(p.mountingType==='din'?{moduleWidth:p.widthModules18,widthMm:p.widthMm}:{}),
     poles:p.poles,currentA:p.ratedCurrentA,curve:p.curve,breakingCapacityKa:p.breakingCapacityA===undefined?undefined:p.breakingCapacityA/1000,residualType:p.residualType,residualCurrentMa:p.residualCurrentMa,

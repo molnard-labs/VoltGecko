@@ -218,6 +218,26 @@ test.describe('phone catalogue', () => {
   });
 });
 
+test('shows illustrative Schneider photos in the catalogue and the exported board drawing', async ({ page }) => {
+  await openPlanner(page);
+  await page.locator('.manufacturer-library-button').click();
+  const dialog = library(page);
+  const card = await findProduct(dialog, 'EZ9F57116');
+  await expect(card.locator('.product-image')).toHaveAttribute('src', /^data:image\/(?:webp|png|jpeg);base64,/);
+  await expect(card.getByText('Termékcsalád illusztrációja')).toBeVisible();
+  await card.getByRole('button', { name: 'Hozzáadás az elosztóhoz: EZ9F57116', exact: true }).click();
+  await expect.poll(async () => (await readDocument(page)).data.devices.find(item => item.product?.reference === 'EZ9F57116')).toBeTruthy();
+  const device = (await readDocument(page)).data.devices.find(item => item.product?.reference === 'EZ9F57116')!;
+  await dialog.getByRole('button', { name: 'Termékkönyvtár bezárása' }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
+  if (await page.locator(`[data-device-id="${device.id}"] image`).count() === 0) {
+    await page.getByRole('button', { name: 'Új DIN-sor' }).click();
+    await page.getByRole('combobox', { name: '2. sor: készülék elhelyezése' }).selectOption(device.id);
+  }
+  await expect(page.locator(`[data-device-id="${device.id}"] image`)).toHaveAttribute('href', /^data:image\/(?:webp|png|jpeg);base64,/);
+  await expect(page.locator('.wiring-diagram').getByText('I: termékcsalád illusztrációja')).toBeVisible();
+});
+
 test('places a photographed Tracon terminal with its actual width and common screws', async ({ page }) => {
   await openPlanner(page);
   await page.locator('.manufacturer-library-button').click();

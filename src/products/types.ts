@@ -11,6 +11,8 @@ export interface CatalogProduct {
   name: { hu:string; en:string };
   description: { hu:string; en:string };
   image?:string;
+  /** A family photo rather than a verified photograph of this exact reference. */
+  imageIllustrative?:boolean;
   electrical?:DeviceElectrical;
   moduleWidth?:number;
   widthMm?:number;

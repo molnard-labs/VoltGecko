@@ -92,6 +92,8 @@ test('precaches lazy features without loading them on welcome, then opens each f
   const library = page.getByRole('dialog', { name: 'Gyártói termékkönyvtár', exact: true });
   await library.getByRole('searchbox').fill('EZ9F57116');
   await expect(library.locator('.product-reference')).toHaveText('EZ9F57116');
+  await expect(library.locator('.product-image')).toHaveAttribute('src', /^data:image\/webp;base64,/);
+  await expect(library.getByText('Termékcsalád illusztrációja')).toBeVisible();
   await library.getByRole('button', { name: 'Termékkönyvtár bezárása', exact: true }).click();
   await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
   await expect(page.locator('rect.wiring-device')).toHaveCount(6);

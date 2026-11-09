@@ -60,6 +60,9 @@ export default defineConfig(({ command }) => ({
         // PDF export alone needs the server renderer. Keep it separate from
         // jsPDF without pulling React's shared runtime out of the app entry.
         manualChunks(id) {
+          // Keep bundled, offline product photos separate from catalog metadata
+          // so neither chunk exceeds the application's 500 kB loading budget.
+          if (/\/src\/products\/schneider-images\//.test(id.replaceAll('\\', '/'))) return 'schneider-images';
           if (/\/node_modules\/react-dom\/.*server/.test(id.replaceAll('\\', '/'))) return 'react-dom-server';
           if (/\/node_modules\/dexie\//.test(id.replaceAll('\\', '/'))) return 'dexie';
         }

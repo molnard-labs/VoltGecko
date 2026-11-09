@@ -8,6 +8,7 @@ import { automaticWireRoute } from '../../data/boardWireRouting';
 import type { RoutingTerminal, WiringObstacle } from '../../data/boardWireRouting';
 import { defaultWireColor, GREEN_YELLOW, wireColorAppearance } from '../../data/wireColors';
 import { TRACON_PRODUCTS } from '../../products/tracon';
+import { SCHNEIDER_PRODUCTS } from '../../products/schneider';
 import type {
   Board,
   BoardBus,
@@ -20,6 +21,14 @@ import type {
 } from '../../types';
 import { encodeEndpoint, sameEndpoint } from './endpoints';
 import { roundedWirePath } from './wirePath';
+
+// Resolve only bundled catalog images by both manufacturer and reference. The
+// catalog uses embedded image data, so the drawing's SVG export remains portable.
+const catalogImages = new Map(
+  [...TRACON_PRODUCTS, ...SCHNEIDER_PRODUCTS]
+    .filter((product) => product.image)
+    .map((product) => [`${product.manufacturer}\0${product.reference}`, { image: product.image!, illustrative: !!product.imageIllustrative }])
+);
 
 type Drag = {
   kind: 'point' | 'label' | 'bus' | 'infeed' | 'infeed-label';
@@ -450,6 +459,10 @@ export function WiringDiagram({
   const invalidDevices = new Set(getBoardIssues(board, data.devices).map((issue) => issue.deviceId));
   const selectedWire = wiring.wires.find((wire) => wire.id === selectedWireId);
   const selectedRoute = selectedWire ? route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  const hasIllustrativeImage = [...devicePositions.keys()].some((id) => {
+    const product = devicesById.get(id)?.product;
+    return product && catalogImages.get(`${product.manufacturer}\0${product.reference}`)?.illustrative;
+  });
   const terminal = (endpoint: WiringEndpoint, point: Point, text: string) => {
     const selected = (from && sameEndpoint(from, endpoint)) || (to && sameEndpoint(to, endpoint)),
       appearance = wireColorAppearance(defaultWireColor(endpointConductor(data, endpoint) ?? 'L')),
@@ -579,8 +592,8 @@ export function WiringDiagram({
           const dragging = deviceDrag?.moved && deviceDrag.id === id;
           const invalid = invalidDevices.has(id) || (dragging && !deviceDrag.target);
           const type = device.electrical?.role ?? device.kind;
-          const productImage = device.product?.manufacturer === 'Tracon Electric'
-            ? TRACON_PRODUCTS.find(product => product.reference === device.product?.reference)?.image : undefined;
+          const productImage = device.product
+            ? catalogImages.get(`${device.product.manufacturer}\0${device.product.reference}`) : undefined;
           const typeLabel = ({ breaker: 'MCB', mcb: 'MCB', rcd: 'RCD', rccb: 'RCCB', rcbo: 'RCBO', spd: 'SPD', main: 'MAIN', terminal: 'XT', meter: 'kWh', contactor: 'KM', mpcb: 'MPCB', blank: '—' } as Record<string, string>)[type] ?? type.toUpperCase();
           const clipId = `${deviceClipId}-${deviceIndex}`;
           return (
@@ -602,7 +615,8 @@ export function WiringDiagram({
               ><title>{[device.code, device.name, device.rating || typeLabel, device.electrical?.group].filter(Boolean).join(' · ')}</title></rect>
               <clipPath id={clipId}><rect x={position.x + 3} y={position.y + 15} width={position.w - 6} height={58} /></clipPath>
               <g clipPath={`url(#${clipId})`}>
-              {productImage ? <image href={productImage} x={position.x + 4} y={position.y + 29} width={position.w - 8} height={32} preserveAspectRatio="xMidYMid meet" pointerEvents="none" /> : device.kind !== 'blank' && <DeviceFace type={type} x={position.x} y={position.y} width={position.w} />}
+              {productImage ? <image href={productImage.image} x={position.x + 4} y={position.y + 29} width={position.w - 8} height={32} preserveAspectRatio="xMidYMid meet" pointerEvents="none" /> : device.kind !== 'blank' && <DeviceFace type={type} x={position.x} y={position.y} width={position.w} />}
+              {productImage?.illustrative && <text x={position.x + position.w - 5} y={position.y + 26} textAnchor="end" fontSize={11} fontWeight={700} fill="#1b563e" pointerEvents="none"><title>{t('Termékcsalád illusztrációja')}</title>I</text>}
               <text
                 className="wiring-device-code"
                 x={position.x + position.w / 2}
@@ -749,6 +763,7 @@ export function WiringDiagram({
             </text>
           ) : null;
         })}
+        {hasIllustrativeImage && <text x={frame.x + 18} y={frame.y + 27} fontSize={13} fill="#365746"><title>{t('Termékcsalád illusztrációja')}</title>{t('I: termékcsalád illusztrációja')}</text>}
         {selectedWire &&
           selectedRoute
             .slice(1, -1)

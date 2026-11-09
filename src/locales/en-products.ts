@@ -1,4 +1,6 @@
 const translations: Record<string, string> = {
+  'Termékcsalád illusztrációja':'Product family illustration',
+  'I: termékcsalád illusztrációja':'I: product family illustration',
   'Schneider terméktár':'Schneider product library',
   'Gyártói terméktár':'Manufacturer product library',
   'Easy9 Pro és kompatibilis termékek':'Easy9 Pro and compatible products',

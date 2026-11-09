@@ -50,6 +50,7 @@ function ProductCard({ product, onAdd, language }: { product: CatalogProduct; on
     <strong className="product-reference">{product.reference}</strong>
     <h3>{product.name[language]}</h3>
     {product.image && <img className="product-image" src={product.image} alt={`${product.manufacturer} ${product.reference}`} loading="lazy" />}
+    {product.image && product.imageIllustrative && <small className="product-image-note">{t('Termékcsalád illusztrációja')}</small>}
     {product.description[language] && <p className="product-description">{product.description[language]}</p>}
     {specs.length > 0 && <dl className="product-specs">{specs.map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>}
     <div className="product-source">
