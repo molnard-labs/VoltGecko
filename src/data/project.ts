@@ -81,6 +81,25 @@ export function deleteDevice(data: ProjectData, id: string): ProjectData {
   return next;
 }
 
+/** Remove a board while retaining its devices and all links with valid endpoints. */
+export function deleteBoard(data: ProjectData, id: string): ProjectData {
+  const board = data.boards.find((item) => item.id === id);
+  if (!board) return data;
+  const buses = new Set(board.wiring?.buses.map((bus) => bus.id) ?? []);
+  const infeeds = new Set(board.wiring?.infeeds.map((infeed) => infeed.id) ?? []);
+  const next = structuredClone(data);
+  next.boards = next.boards.filter((item) => item.id !== id);
+  for (const device of next.devices) if (device.boardId === id) delete device.boardId;
+  for (const other of next.boards) {
+    if (other.wiring) other.wiring.wires = other.wiring.wires.filter((wire) =>
+      ![wire.from, wire.to].some((endpoint) =>
+        endpoint.kind === 'bus' ? buses.has(endpoint.busId) : endpoint.kind === 'infeed' && infeeds.has(endpoint.infeedId)
+      )
+    );
+  }
+  return next;
+}
+
 export function resolveImport(
   incoming: ProjectDocument,
   existing?: ProjectDocument

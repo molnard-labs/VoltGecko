@@ -1,0 +1,2 @@
+.wiring-endpoint-handle { fill: transparent; stroke: var(--focus); stroke-width: 2.5px; stroke-dasharray: 3 2; cursor: grab; pointer-events: all; touch-action: none; }
+.wiring-endpoint-handle:active { cursor: grabbing; }

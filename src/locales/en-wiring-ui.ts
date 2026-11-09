@@ -1,4 +1,11 @@
 const messages:Record<string,string>={
+  'Rácshoz illesztés':'Snap to grid',
+  'Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.':'Dragged bends snap to the grid and the wire stays orthogonal.',
+  'A rajzon húzd a köröket a vezeték alakításához. Töréspontot itt szúrhatsz be vagy törölhetsz.':'Drag the circles on the diagram to shape the wire. Add or remove bends here.',
+  'Vezeték kezdőpontjának áthúzása':'Drag wire start to another terminal',
+  'Vezeték végpontjának áthúzása':'Drag wire end to another terminal',
+  'Húzd át a vezeték végét egy másik csatlakozópontra.':'Drag the end of the wire to another terminal.',
+  'A kijelölt vezeték végeit másik csatlakozópontra húzhatod. A végpontok az alábbi listákból is módosíthatók.':'Drag either end of the selected wire to another terminal. You can also change endpoints using the lists below.',
   'Bejövő vezetékek':'Incoming conductors',
   'A betáplálást a rajzon húzással helyezheted el, pólusait vezetékekkel kötheted be.':'Drag the supply into position on the drawing, then connect its poles with wires.',
   '{number}. betáplálás névleges árama (A)':'Supply {number} rated current (A)',

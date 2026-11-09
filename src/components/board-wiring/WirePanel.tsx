@@ -6,6 +6,7 @@ import type { BoardWire, Point, ProjectData, WiringEndpoint } from '../../types'
 import { CableFields } from '../ElectricalDeviceFields';
 import { encodeEndpoint, parseEndpoint } from './endpoints';
 import type { EndpointOption } from './endpoints';
+import { insertWireBend, orthogonalRoute, removeWireBend } from './wireEditing';
 
 interface EndpointSelectProps {
   data: ProjectData;
@@ -57,6 +58,7 @@ interface Props {
   wires: BoardWire[];
   selectedWireId?: string;
   selectedRoute: Point[];
+  snapToGrid: boolean;
   endpoints: EndpointOption[];
   onSelectWire: (id: string) => void;
   onPatchWire: (id: string, patch: Partial<BoardWire>) => void;
@@ -71,6 +73,7 @@ export function WirePanel({
   wires,
   selectedWireId,
   selectedRoute,
+  snapToGrid,
   endpoints,
   onSelectWire,
   onPatchWire,
@@ -91,8 +94,8 @@ export function WirePanel({
       value={value}
       title={title}
       onChange={(value) => {
-        onChange(value);
         onClearError();
+        onChange(value);
       }}
     />
   );
@@ -255,8 +258,9 @@ export function WirePanel({
                   'Feszültségesés-becsléshez add meg a gyártói ellenállást, a hosszt és a kapcsolódó készülék névleges áramát.'
                 )}
           </p>
-          <details>
+          <details open>
             <summary>{t('Nyomvonal és felirat helye')}</summary>
+            <p className="subtle">{t('A rajzon húzd a köröket a vezeték alakításához. Töréspontot itt szúrhatsz be vagy törölhetsz.')}</p>
             {selectedRoute.slice(1, -1).map((point, index) => (
               <div className="wiring-coordinate" key={index}>
                 <span>{t('{number}. töréspont', { number: index + 1 })}</span>
@@ -268,9 +272,9 @@ export function WirePanel({
                       type="number"
                       value={point[axis]}
                       onChange={(e) => {
-                        const points = selectedRoute.slice(1, -1);
-                        points[index] = { ...points[index], [axis]: Number(e.target.value) };
-                        onPatchWire(selectedWire.id, { points });
+                        const route = selectedRoute.slice();
+                        route[index + 1] = { ...route[index + 1], [axis]: Number(e.target.value) };
+                        onPatchWire(selectedWire.id, { points: (snapToGrid ? orthogonalRoute(route, selectedRoute) : route).slice(1, -1) });
                       }}
                     />
                   </label>
@@ -278,9 +282,7 @@ export function WirePanel({
                 <button
                   className="icon-button"
                   aria-label={t('{number}. töréspont törlése', { number: index + 1 })}
-                  onClick={() =>
-                    onPatchWire(selectedWire.id, { points: selectedRoute.slice(1, -1).filter((_, i) => i !== index) })
-                  }
+                  onClick={() => onPatchWire(selectedWire.id, { points: removeWireBend(selectedRoute, index, snapToGrid) })}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -288,17 +290,7 @@ export function WirePanel({
             ))}
             <button
               className="quiet"
-              onClick={() =>
-                onPatchWire(selectedWire.id, {
-                  points: [
-                    ...selectedRoute.slice(1, -1),
-                    {
-                      x: (selectedRoute[0].x + selectedRoute.at(-1)!.x) / 2,
-                      y: (selectedRoute[0].y + selectedRoute.at(-1)!.y) / 2
-                    }
-                  ]
-                })
-              }
+              onClick={() => onPatchWire(selectedWire.id, { points: insertWireBend(selectedRoute, snapToGrid) })}
             >
               <Plus size={14} />
               {t('Töréspont hozzáadása')}

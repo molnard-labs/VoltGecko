@@ -5,6 +5,7 @@ import { uid } from '../catalog';
 import { BoardConnections } from './BoardConnections';
 import { BoardWiringEditor } from './BoardWiringEditor';
 import { getAvailableBoardDevices, getBoardIssues, placeBoardDevice } from '../data/boardPlacement';
+import { deleteBoard } from '../data/project';
 
 interface Props { data: ProjectData; boardId:string; onBoardChange:(id:string)=>void; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (data: ProjectData) => void; onNotify: (text: string) => void }
 export function BoardEditor({ data, boardId:active, onBoardChange:setActive, selectedId, onSelect, onChange, onNotify }: Props) {
@@ -17,6 +18,14 @@ export function BoardEditor({ data, boardId:active, onBoardChange:setActive, sel
     const name = prompt(t("Az elosztó neve:"), t('Elosztó {number}', {number:data.boards.length + 1})); if (!name?.trim()) return;
     const id = uid(); onChange({ ...data, boards: [...data.boards, { id, name: name.trim(), rows: [{id:uid(),name:t('{number}. sor', {number:1}),capacity:12,placements:[]}] }] }); setActive(id);
   };
+  const removeBoard = () => {
+    if (!board || !confirm(t('Törlöd a(z) „{name}” elosztót? A készülékek megmaradnak, de az elosztó sorai, sínjei, betáplálásai és vezetékei, valamint a törölt sínekhez vagy betáplálásokhoz kapcsolódó más elosztók vezetékei törlődnek.', {name: board.name}))) return;
+    const next = deleteBoard(data, board.id);
+    onChange(next);
+    setActive(next.boards[0]?.id ?? '');
+    onSelect(null);
+    onNotify(t('Az elosztó törölve.'));
+  };
   const place = (device: Device, rowId: string, start?: number) => {
     try { onChange(placeBoardDevice(data, board.id, rowId, device.id, start)); onSelect(device.id); }
     catch (error) { onNotify(error instanceof Error ? error.message : String(error)); }
@@ -25,7 +34,7 @@ export function BoardEditor({ data, boardId:active, onBoardChange:setActive, sel
   const total = board.rows.reduce((sum, r) => sum + r.capacity, 0);
   const used = board.rows.flatMap(r=>r.placements).reduce((sum,p)=>sum+(data.devices.find(d=>d.id===p.deviceId)?.moduleWidth??1),0);
   return <div className="board-editor">
-    <div className="section-heading"><div><span className="eyebrow">{t("ELOSZTÓTERVEZŐ")}</span><h2>{board.name}</h2><p>{t("Készülékek és modulhelyek, egy helyen.")}</p></div><div className="row-actions"><select aria-label={t("Aktív elosztó")} value={board.id} onChange={e=>setActive(e.target.value)}>{data.boards.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select><button className="icon-button" title={t("Új elosztó")} onClick={addBoard}><Plus size={18}/></button></div></div>
+    <div className="section-heading"><div><span className="eyebrow">{t("ELOSZTÓTERVEZŐ")}</span><h2>{board.name}</h2><p>{t("Készülékek és modulhelyek, egy helyen.")}</p></div><div className="row-actions"><select aria-label={t("Aktív elosztó")} value={board.id} onChange={e=>setActive(e.target.value)}>{data.boards.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select><button className="icon-button" title={t("Új elosztó")} onClick={addBoard}><Plus size={18}/></button><button className="icon-button danger-hover" title={t('Elosztó törlése')} aria-label={t('Elosztó törlése')} onClick={removeBoard}><Trash2 size={18}/></button></div></div>
     <div className="board-stats"><div><span>{t("Összes modulhely")}</span><strong>{formatNumber(total)}<small>M</small></strong></div><div><span>{t("Tervezett foglaltság")}</span><strong>{formatNumber(used)}<small>M</small></strong></div><div><span>{t("Szabad kapacitás")}</span><strong className={used>total?'danger-text':'green-text'}>{formatNumber(total-used)}<small>M</small></strong></div><div><span>{t("Tervezési jelzések")}</span><strong className={issues.length?'amber-text':''}>{issues.length}</strong></div></div>
     {board.product&&<div className="board-manufacturer"><strong>{board.product.manufacturer} · {board.product.reference}</strong><span>{board.product.range}</span><a href={board.product.sourceUrl} target="_blank" rel="noreferrer noopener">{t('Gyártói forrás')} · {board.product.sourcePage}</a></div>}
     <div className="board-surface board-row-controls">

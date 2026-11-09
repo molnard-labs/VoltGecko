@@ -21,6 +21,8 @@ import type {
 } from '../../types';
 import { encodeEndpoint, sameEndpoint } from './endpoints';
 import { roundedWirePath } from './wirePath';
+import './wire-endpoints.css';
+import { orthogonalRoute, snapWirePoint, WIRING_GRID_SIZE } from './wireEditing';
 
 // Resolve only bundled catalog images by both manufacturer and reference. The
 // catalog uses embedded image data, so the drawing's SVG export remains portable.
@@ -48,6 +50,7 @@ type DeviceDrag = {
   viewport: { x: number; y: number; width: number; height: number };
 };
 interface WiringChanges {
+  snapToGrid: boolean;
   patchWire: (id: string, patch: Partial<BoardWire>) => void;
   patchBus: (id: string, patch: Partial<BoardBus>) => void;
   patchInfeed: (id: string, patch: Partial<BoardInfeed>) => void;
@@ -58,7 +61,7 @@ export function useWiringDiagram(
   data: ProjectData,
   board: Board,
   wiring: BoardWiring,
-  { patchWire, patchBus, patchInfeed, placeDevice }: WiringChanges
+  { patchWire, patchBus, patchInfeed, placeDevice, snapToGrid }: WiringChanges
 ) {
   const [drag, setDrag] = useState<Drag>();
   const [deviceDrag, setDeviceDrag] = useState<DeviceDrag>();
@@ -194,16 +197,23 @@ export function useWiringDiagram(
     const cached = routes.get(wire.id);
     if (cached) return cached;
     const first = endpointPoint(wire.from), last = endpointPoint(wire.to);
-    const points = wire.points ?? automaticWireRoute(
+    const storedPoints = wire.points ?? automaticWireRoute(
       routingTerminal(wire.from, last), routingTerminal(wire.to, first), obstacles, wire.id
     ).slice(1, -1);
-    const result = [
+    // Normalize saved paths visually without mutating project data. This also
+    // makes the displayed bend indices match what a later drag will edit.
+    const points = snapToGrid && wire.points
+      ? orthogonalRoute([first, ...storedPoints, last]).slice(1, -1)
+      : storedPoints;
+    const original = [first, ...points, last];
+    const moved = [
       first,
       ...points.map((point, i) =>
         drag?.kind === 'point' && drag.id === wire.id && drag.index === i ? drag.point : point
       ),
       last
     ];
+    const result = snapToGrid && drag?.kind === 'point' && drag.id === wire.id ? orthogonalRoute(moved, original) : moved;
     routes.set(wire.id, result);
     return result;
   };
@@ -307,7 +317,6 @@ export function useWiringDiagram(
         patchWire(value.id, { labelOffset: { x: value.point.x - anchor.x, y: value.point.y - anchor.y } });
       } else {
         const points = route(wire, index).slice(1, -1);
-        points[value.index ?? 0] = value.point;
         patchWire(value.id, { points });
       }
     }
@@ -345,6 +354,7 @@ export function useWiringDiagram(
   const { width, height } = viewport;
   return {
     svgRef,
+    snapToGrid,
     drag,
     deviceDrag,
     setDrag,
@@ -412,6 +422,7 @@ interface Props {
   onSelectWire: (id: string) => void;
   onSelectDevice: (id: string | null) => void;
   onSelectEndpoint: (endpoint: WiringEndpoint) => void;
+  onReconnectEndpoint: (id: string, side: 'from' | 'to', endpoint: WiringEndpoint) => void;
 }
 
 export function WiringDiagram({
@@ -426,12 +437,15 @@ export function WiringDiagram({
   onPlaceDevice,
   onSelectWire,
   onSelectDevice,
-  onSelectEndpoint
+  onSelectEndpoint,
+  onReconnectEndpoint
 }: Props) {
   const pePatternId = `wiring-pe-${useId().replace(/:/g, '')}`;
   const deviceClipId = `wiring-device-${useId().replace(/:/g, '')}`;
+  const gridPatternId = `wiring-grid-${useId().replace(/:/g, '')}`;
   const {
     svgRef,
+    snapToGrid,
     drag,
     deviceDrag,
     setDrag,
@@ -459,6 +473,73 @@ export function WiringDiagram({
   const invalidDevices = new Set(getBoardIssues(board, data.devices).map((issue) => issue.deviceId));
   const selectedWire = wiring.wires.find((wire) => wire.id === selectedWireId);
   const selectedRoute = selectedWire ? route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  // This drag is separate from bend/device dragging: capturing the pointer on
+  // the SVG keeps touch drags working, and hit testing uses screen pixels.
+  type EndpointDrag = { id: string; side: 'from' | 'to'; pointerId: number; start: Point; point: Point; moved: boolean };
+  const [endpointDrag, setEndpointDrag] = useState<EndpointDrag>();
+  const endpointDragRef = useRef<EndpointDrag | undefined>(undefined);
+  const stopEndpointDrag = () => {
+    const pointerId = endpointDragRef.current?.pointerId;
+    endpointDragRef.current = undefined; setEndpointDrag(undefined);
+    if (pointerId !== undefined && svgRef.current?.hasPointerCapture(pointerId)) svgRef.current.releasePointerCapture(pointerId);
+  };
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') stopEndpointDrag(); };
+    window.addEventListener('keydown', cancel);
+    return () => window.removeEventListener('keydown', cancel);
+  }, []);
+  const visibleEndpoints: WiringEndpoint[] = [
+    ...[...devicePositions.keys()].flatMap((id) => {
+      const device = devicesById.get(id)!;
+      if (device.kind === 'blank') return [];
+      return (['top', 'bottom'] as const).flatMap((side) =>
+        effectiveDevicePoles(device).map((_, pole): WiringEndpoint => ({ kind: 'device', deviceId: id, side, pole })));
+    }),
+    ...wiring.buses.flatMap((bus) => Array.from({ length: bus.capacity }, (_, terminal): WiringEndpoint => ({ kind: 'bus', busId: bus.id, terminal }))),
+    ...wiring.infeeds.flatMap((source) => source.poles.map((_, pole): WiringEndpoint => ({ kind: 'infeed', infeedId: source.id, pole }))),
+    ...externalEndpoints.values()
+  ];
+  const endpointAt = (clientX: number, clientY: number): WiringEndpoint | undefined => {
+    const matrix = svgRef.current?.getScreenCTM();
+    if (!matrix) return undefined;
+    let closest: WiringEndpoint | undefined, distance = 22;
+    for (const endpoint of visibleEndpoints) {
+      const point = endpointPoint(endpoint);
+      const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+      const nextDistance = Math.hypot(screen.x - clientX, screen.y - clientY);
+      if (nextDistance < distance) { closest = endpoint; distance = nextDistance; }
+    }
+    return closest;
+  };
+  const startEndpointDrag = (event: PointerEvent, side: 'from' | 'to') => {
+    if (event.button !== 0 || !selectedWire || drag || deviceDrag) return;
+    event.preventDefault(); event.stopPropagation();
+    const value: EndpointDrag = { id: selectedWire.id, side, pointerId: event.pointerId,
+      start: { x: event.clientX, y: event.clientY }, point: endpointPoint(selectedWire[side]), moved: false };
+    endpointDragRef.current = value; setEndpointDrag(value);
+    svgRef.current?.setPointerCapture(event.pointerId);
+  };
+  const moveEndpointDrag = (event: PointerEvent): boolean => {
+    const current = endpointDragRef.current;
+    if (!current) return false;
+    if (current.pointerId !== event.pointerId) return true;
+    const moved = current.moved || Math.hypot(event.clientX - current.start.x, event.clientY - current.start.y) >= 5;
+    if (moved) { const value = { ...current, moved, point: svgPoint(event.clientX, event.clientY) }; endpointDragRef.current = value; setEndpointDrag(value); }
+    return true;
+  };
+  const finishEndpointDrag = (event: PointerEvent): boolean => {
+    const current = endpointDragRef.current;
+    if (!current) return false;
+    if (current.pointerId !== event.pointerId) return true;
+    const target = current.moved ? endpointAt(event.clientX, event.clientY) : undefined;
+    stopEndpointDrag();
+    if (target) onReconnectEndpoint(current.id, current.side, target);
+    else if (!current.moved) {
+      const wire = wiring.wires.find((item) => item.id === current.id);
+      if (wire) onSelectEndpoint(wire[current.side]);
+    }
+    return true;
+  };
   const hasIllustrativeImage = [...devicePositions.keys()].some((id) => {
     const product = devicesById.get(id)?.product;
     return product && catalogImages.get(`${product.manufacturer}\0${product.reference}`)?.illustrative;
@@ -504,23 +585,30 @@ export function WiringDiagram({
         viewBox={viewBox}
         aria-label={t('Elosztó részletes huzalozási rajza')}
         onPointerMove={(event) => {
+          if (moveEndpointDrag(event)) return;
           if (!moveDeviceDrag(event) && drag) {
             const point = svgPoint(event.clientX, event.clientY);
-            setDrag({ ...drag, point: { x: point.x + drag.delta.x, y: point.y + drag.delta.y } });
+            const next = { x: point.x + drag.delta.x, y: point.y + drag.delta.y };
+            setDrag({ ...drag, point: snapToGrid && drag.kind === 'point' ? snapWirePoint(next) : next });
           }
         }}
         onPointerUp={(event) => {
+          if (finishEndpointDrag(event)) return;
           const completed = commitDeviceDrag(event.pointerId);
           if (completed.clicked) onSelectDevice(completed.clicked);
           if (!completed.handled) commitDrag();
         }}
         onPointerCancel={(event) => {
+          if (endpointDragRef.current?.pointerId === event.pointerId) stopEndpointDrag();
           cancelDeviceDrag(event.pointerId);
           if (!deviceDrag) setDrag(undefined);
         }}
-        onLostPointerCapture={(event) => cancelDeviceDrag(event.pointerId)}
+        onLostPointerCapture={(event) => { if (endpointDragRef.current?.pointerId === event.pointerId) stopEndpointDrag(); cancelDeviceDrag(event.pointerId); }}
       >
         <defs>
+          <pattern id={gridPatternId} width={WIRING_GRID_SIZE} height={WIRING_GRID_SIZE} patternUnits="userSpaceOnUse">
+            <circle cx={0} cy={0} r={0.8} fill="#90a59b" />
+          </pattern>
           <pattern id={pePatternId} width={8} height={8} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width={8} height={8} fill={GREEN_YELLOW.green} />
             <rect width={4} height={8} fill={GREEN_YELLOW.yellow} />
@@ -528,6 +616,7 @@ export function WiringDiagram({
         </defs>
         <rect className="wiring-cabinet-frame" {...frame} rx={12} />
         <rect className="wiring-cabinet-inset" x={frame.x + 14} y={frame.y + 14} width={frame.width - 28} height={frame.height - 28} rx={6} />
+        {snapToGrid && <rect data-testid="wiring-grid" {...frame} rx={12} fill={`url(#${gridPatternId})`} opacity={0.5} pointerEvents="none" />}
         {board.rows.map((row, index) => (
           <g key={row.id}>
             <rect
@@ -551,9 +640,11 @@ export function WiringDiagram({
           </g>
         ))}
         {wiring.wires.map((wire, index) => {
-          const points = route(wire, index).map((point) => `${point.x},${point.y}`).join(' ');
+          const currentRoute = route(wire, index).map((point, routeIndex, all) =>
+            endpointDrag?.id === wire.id && endpointDrag.moved && ((endpointDrag.side === 'from' && routeIndex === 0) || (endpointDrag.side === 'to' && routeIndex === all.length - 1)) ? endpointDrag.point : point);
+          const points = currentRoute.map((point) => `${point.x},${point.y}`).join(' ');
           const appearance = wireColorAppearance(wire, endpointConductor(data, wire.from) ?? 'L');
-          const path = roundedWirePath(route(wire, index));
+          const path = roundedWirePath(currentRoute);
           return (
             <g key={wire.id} className={`wiring-wire ${selectedWireId === wire.id ? 'selected' : ''}`}>
               <polyline
@@ -764,6 +855,15 @@ export function WiringDiagram({
           ) : null;
         })}
         {hasIllustrativeImage && <text x={frame.x + 18} y={frame.y + 27} fontSize={13} fill="#365746"><title>{t('Termékcsalád illusztrációja')}</title>{t('I: termékcsalád illusztrációja')}</text>}
+        {selectedWire && (['from', 'to'] as const).map((side) => {
+          const point = endpointDrag?.id === selectedWire.id && endpointDrag.side === side && endpointDrag.moved
+            ? endpointDrag.point : endpointPoint(selectedWire[side]);
+          return <circle key={side} className="wiring-endpoint-handle" data-testid={`wire-endpoint-${side}`}
+            cx={point.x} cy={point.y} r={11} onPointerDown={(event) => startEndpointDrag(event, side)}
+            aria-label={t(side === 'from' ? 'Vezeték kezdőpontjának áthúzása' : 'Vezeték végpontjának áthúzása')}>
+            <title>{t('Húzd át a vezeték végét egy másik csatlakozópontra.')}</title>
+          </circle>;
+        })}
         {selectedWire &&
           selectedRoute
             .slice(1, -1)

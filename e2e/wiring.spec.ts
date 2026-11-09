@@ -43,7 +43,7 @@ test('preserves the exact four-pole neutral terminal in either selection order a
   await expect(page.locator('.wiring-wire-editor')).toContainText('Feszültségesés-becsléshez');
   await page.getByLabel('Kábel: Gyártói ellenállás (Ω/km)',{exact:true}).fill('3.39');
   await expect(page.locator('.wiring-wire-editor')).toContainText('Becsült feszültségesés:');
-  await page.locator('.wiring-wire-editor details>summary').click();
+  await page.getByRole('button',{name:'Rácshoz illesztés'}).click();
   await page.getByLabel('1. töréspont x',{exact:true}).fill('310');
   await page.getByLabel('1. töréspont y',{exact:true}).fill('290');
   const handle=page.getByTestId('wire-bend-0');await handle.scrollIntoViewIfNeeded();const bounds=await handle.boundingBox();if(!bounds)throw new Error('No bend handle');

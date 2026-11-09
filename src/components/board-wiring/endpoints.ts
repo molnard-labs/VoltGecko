@@ -1,5 +1,6 @@
-import { effectiveDevicePoles, wiringEndpointLabel } from '../../data/boardWiring';
-import type { ProjectData, WiringEndpoint } from '../../types';
+import { effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
+import { t } from '../../i18n';
+import type { BoardWire, ProjectData, WiringEndpoint } from '../../types';
 
 export { conductorColors } from '../../data/wireColors';
 
@@ -18,6 +19,18 @@ export function sameEndpoint(a: WiringEndpoint, b: WiringEndpoint): boolean {
     return a.deviceId === b.deviceId && a.side === b.side && a.pole === b.pole;
   if (a.kind === 'bus' && b.kind === 'bus') return a.busId === b.busId && a.terminal === b.terminal;
   return a.kind === 'infeed' && b.kind === 'infeed' && a.infeedId === b.infeedId && a.pole === b.pole;
+}
+
+/** All entry points use the same rules when creating or reconnecting a wire. */
+export function wireEndpointError(data: ProjectData, wires: BoardWire[], from: WiringEndpoint, to: WiringEndpoint, exceptId?: string): string | undefined {
+  if (!endpointConductor(data, from) || !endpointConductor(data, to))
+    return t('A kiválasztott csatlakozópont megváltozott. Válaszd ki újra a két végpontot.');
+  if (sameEndpoint(from, to)) return t('Két különböző csatlakozópontot válassz.');
+  if (wires.some((wire) => wire.id !== exceptId &&
+    ((sameEndpoint(wire.from, from) && sameEndpoint(wire.to, to)) ||
+     (sameEndpoint(wire.to, from) && sameEndpoint(wire.from, to)))))
+    return t('Ez a vezeték már szerepel a tervben.');
+  return undefined;
 }
 
 export interface EndpointOption {

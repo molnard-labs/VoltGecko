@@ -16,7 +16,7 @@ import {
   encodeEndpoint,
   getEndpointOptions,
   parseEndpoint,
-  sameEndpoint
+  wireEndpointError
 } from './board-wiring/endpoints';
 import { WiringDiagram, useWiringDiagram } from './board-wiring/WiringDiagram';
 import { EndpointSelect, WirePanel } from './board-wiring/WirePanel';
@@ -38,6 +38,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   const [fromValue, setFromValue] = useState('');
   const [toValue, setToValue] = useState('');
   const [continuousWiring, setContinuousWiring] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
   const [wireId, setWireId] = useState<string>();
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState<WireEstimate>();
@@ -63,11 +64,20 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
     fn(target.wiring, next);
     onChange(next);
   };
-  const patchWire = (id: string, patch: Partial<BoardWire>) =>
+  const patchWire = (id: string, patch: Partial<BoardWire>) => {
+    const original = wiring.wires.find((wire) => wire.id === id);
+    if (!original) return;
+    const from = patch.from ?? original.from, to = patch.to ?? original.to;
+    if (patch.from || patch.to) {
+      const message = wireEndpointError(data, wiring.wires, from, to, id);
+      if (message) { setError(message); onNotify(message); return; }
+      setError('');
+    }
     update((value) => {
       const wire = value.wires.find((w) => w.id === id);
       if (wire) Object.assign(wire, patch);
     });
+  };
   const patchBus = (id: string, patch: Partial<BoardBus>) =>
     update((value) => {
       const bus = value.buses.find((b) => b.id === id);
@@ -114,24 +124,8 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   };
   const addWire = () => {
     if (!from || !to) return;
-    if (!endpointConductor(data, from) || !endpointConductor(data, to)) {
-      setError(t('A kiválasztott csatlakozópont megváltozott. Válaszd ki újra a két végpontot.'));
-      return;
-    }
-    if (sameEndpoint(from, to)) {
-      setError(t('Két különböző csatlakozópontot válassz.'));
-      return;
-    }
-    if (
-      wiring.wires.some(
-        (w) =>
-          (sameEndpoint(w.from, from) && sameEndpoint(w.to, to)) ||
-          (sameEndpoint(w.to, from) && sameEndpoint(w.from, to))
-      )
-    ) {
-      setError(t('Ez a vezeték már szerepel a tervben.'));
-      return;
-    }
+    const message = wireEndpointError(data, wiring.wires, from, to);
+    if (message) { setError(message); return; }
     const id = uid();
     update((value, next) => {
       assignConnectedPhase(next, from, to);
@@ -157,7 +151,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
       }}
     />
   );
-  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, placeDevice: onPlaceDevice });
+  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, placeDevice: onPlaceDevice, snapToGrid });
   const selectedWire = wiring.wires.find((wire) => wire.id === wireId);
   const selectedRoute = selectedWire ? diagram.route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
 
@@ -188,6 +182,10 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
           <p className="subtle">
             {t('A készülékeket a fogantyújukkal mozgasd. A kapcsokra kattintva vezetékeket hozhatsz létre.')}
           </p>
+          <div className="row-actions wiring-grid-control">
+            <button type="button" className="quiet wiring-mode-toggle" aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}>{t('Rácshoz illesztés')}</button>
+            {snapToGrid && <span className="subtle">{t('Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.')}</span>}
+          </div>
           <WiringDiagram
             data={data}
             board={board}
@@ -201,6 +199,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             onSelectDevice={selectDevice}
             onSelectEndpoint={selectEndpoint}
             onPlaceDevice={onPlaceDevice}
+            onReconnectEndpoint={(id, side, endpoint) => patchWire(id, { [side]: endpoint })}
           />
           <p className="subtle">
             {t(
@@ -249,7 +248,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
           )}
           <p className="subtle">
             {t(
-              'A kijelölt vezeték csomópontjai és felirata húzhatók. Az alábbi mezőkkel billentyűzettel is szerkeszthetők.'
+              'A kijelölt vezeték végeit másik csatlakozópontra húzhatod. A végpontok az alábbi listákból is módosíthatók.'
             )}
           </p>
           <div className="wiring-panels">
@@ -258,6 +257,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
               wires={wiring.wires}
               selectedWireId={wireId}
               selectedRoute={selectedRoute}
+              snapToGrid={snapToGrid}
               endpoints={endpoints}
               onSelectWire={selectWire}
               onPatchWire={patchWire}
