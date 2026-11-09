@@ -129,7 +129,7 @@ describe('projektelőzmények és import', () => {
     expect(next.devices.some(device => device.id === id)).toBe(false);
     expect(next.boards.flatMap(board => board.rows.flatMap(row => row.placements)).some(placement => placement.deviceId === id)).toBe(false);
     expect(next.circuits[0].protectionDeviceId).toBeUndefined();
-    const routeId = document.data.sheets[0].routes[0].fromDeviceId;
+    const routeId = document.data.sheets[0].routes[0].fromDeviceId!;
     const withoutSwitch = deleteDevice(document.data, routeId);
     expect(withoutSwitch.sheets[0].routes).toHaveLength(0);
     expect(withoutSwitch.sheets[0].placements.some(placement => placement.deviceId === routeId)).toBe(false);

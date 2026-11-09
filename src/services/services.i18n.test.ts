@@ -94,4 +94,21 @@ describe('service language boundaries', () => {
     await buildPdf(doc, 'client');
     expect(pdfCalls.text.filter(value => value === 'Elosztó A')).toHaveLength(without + 1);
   });
+
+  it('includes board endpoints in the professional PDF connection schedule', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    const doc = createProject('Projekt');
+    const first = doc.data.boards[0];
+    first.name = 'Főelosztó';
+    const second = { ...structuredClone(first), id: 'second-board', name: 'Műhely elosztó' };
+    doc.data.boards.push(second);
+    const sheet = doc.data.sheets[0];
+    sheet.boardPlacements = [{ boardId: first.id, x: 100, y: 100 }, { boardId: second.id, x: 200, y: 100 }];
+    sheet.routes = [{ id: 'route', fromBoardId: first.id, toBoardId: second.id, kind: 'power', points: [] }];
+    await buildPdf(doc, 'professional');
+    const schedule = pdfCalls.text.slice(pdfCalls.text.indexOf('Kapcsolatjegyzék'));
+    expect(schedule).toContain('Kiinduló pont');
+    expect(schedule).toContain('Főelosztó');
+    expect(schedule).toContain('Műhely elosztó');
+  });
 });

@@ -376,9 +376,9 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       if (sheet.backgroundOpacity < 0) fail('az alaprajz fedettsége 0 és 1 közötti szám legyen.');
     }
     array(sheet.placements, 'Elhelyezések');
+    const placedBoards = new Set<string>();
     if (sheet.boardPlacements !== undefined) {
       array(sheet.boardPlacements, 'Elosztók elhelyezése', 500);
-      const placedBoards = new Set<string>();
       for (const placement of sheet.boardPlacements) {
         object(placement, 'Elosztó elhelyezése');
         reference(placement.boardId, boards, 'Elhelyezett elosztó');
@@ -402,8 +402,19 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     uniqueIds(sheet.routes, 'Kapcsolat');
     for (const route of sheet.routes) {
       object(route, 'Kapcsolat');
-      reference(route.fromDeviceId, devices, 'Kapcsolat kezdete');
-      reference(route.toDeviceId, devices, 'Kapcsolat vége');
+      for (const [deviceKey, boardKey, label] of [
+        ['fromDeviceId', 'fromBoardId', 'Kapcsolat kezdete'],
+        ['toDeviceId', 'toBoardId', 'Kapcsolat vége']
+      ] as const) {
+        const deviceId = route[deviceKey], boardId = route[boardKey];
+        if ((deviceId !== undefined) === (boardId !== undefined))
+          fail('a kapcsolat végpontja pontosan egy készülék vagy elosztó legyen.');
+        if (deviceId !== undefined) reference(deviceId, devices, label);
+        else {
+          reference(boardId, boards, label);
+          if (!placedBoards.has(boardId as string)) fail('a kapcsolat elosztóját el kell helyezni a tervlapon.');
+        }
+      }
       reference(route.circuitId, circuits, 'Kapcsolat áramköre', true);
       if (route.kind !== 'power' && route.kind !== 'control') fail('ismeretlen kapcsolattípus.');
       array(route.points, 'Nyomvonalpontok', 10_000);

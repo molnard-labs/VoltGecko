@@ -48,6 +48,8 @@ export const enServices: Record<string, string> = {
   'Kapcsolat': 'Connection',
   'Kiinduló eszköz': 'Source device',
   'Cél eszköz': 'Target device',
+  'Kiinduló pont': 'Source',
+  'Célpont': 'Destination',
   'Mi hova kerül?': 'What goes where?',
   'Projektmegjegyzések': 'Project notes',
   'Helyszíni fotók': 'Site photos',

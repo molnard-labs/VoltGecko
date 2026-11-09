@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanSheet, Point } from '../types';
-import { moveSheetDevice } from './floorPlan';
+import { moveSheetBoard, moveSheetDevice } from './floorPlan';
 
 function sheet(points: Point[]): PlanSheet {
   return {
@@ -81,5 +81,38 @@ describe('floor-plan device movement', () => {
       { x: 50, y: 100 },
       { x: 100, y: 100 }
     ]);
+  });
+});
+
+describe('moving connected board markers', () => {
+  const connected = (): PlanSheet => ({
+    id:'s', name:'Sheet', width:500, height:500, annotations:[],
+    placements:[{deviceId:'same',x:100,y:100,rotation:0}],
+    boardPlacements:[{boardId:'same',x:0,y:0},{boardId:'other',x:200,y:100}],
+    routes:[
+      {id:'device-link',fromBoardId:'same',toDeviceId:'same',kind:'power',points:[{x:0,y:0},{x:100,y:0},{x:100,y:100}]},
+      {id:'board-link',fromBoardId:'other',toBoardId:'same',kind:'control',points:[{x:200,y:100},{x:0,y:100},{x:0,y:0}]}
+    ]
+  });
+  const orthogonal = (points:Point[]) => points.every((point,index) => !index || point.x === points[index-1].x || point.y === points[index-1].y);
+
+  it('moves only the board ends even when a device has the same identifier', () => {
+    const original = connected(), before = structuredClone(original);
+    const moved = moveSheetBoard(original, 'same', {x:20,y:30});
+    expect(moved.boardPlacements?.[0]).toMatchObject({x:20,y:30});
+    expect(moved.routes[0].points[0]).toEqual({x:20,y:30});
+    expect(moved.routes[0].points.at(-1)).toEqual({x:100,y:100});
+    expect(moved.routes[1].points[0]).toEqual({x:200,y:100});
+    expect(moved.routes[1].points.at(-1)).toEqual({x:20,y:30});
+    expect(moved.routes.every(route => orthogonal(route.points))).toBe(true);
+    expect(original).toEqual(before);
+  });
+
+  it('moves a device connected to a board while leaving the board end fixed', () => {
+    const moved = moveSheetDevice(connected(), 'same', {x:130,y:120});
+    expect(moved.routes[0].points[0]).toEqual({x:0,y:0});
+    expect(moved.routes[0].points.at(-1)).toEqual({x:130,y:120});
+    expect(moved.routes[1]).toEqual(connected().routes[1]);
+    expect(orthogonal(moved.routes[0].points)).toBe(true);
   });
 });

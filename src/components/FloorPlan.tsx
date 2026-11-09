@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { Asset, DeviceKind, PlanSheet, Point, ProjectData, Route } from '../types';
 import { kindLabel, uid } from '../catalog';
-import { moveSheetDevice } from '../data/floorPlan';
+import { moveSheetBoard, moveSheetDevice } from '../data/floorPlan';
 import { floorRoutePoints } from '../data/floorRoute';
 import { isEmptyPlanSheet } from '../data/planBackground';
 import { getFloorPlanDisplay, getPlanAppearance, getPlanSheetBounds } from '../data/planAppearance';
@@ -43,6 +43,7 @@ export interface FloorPlanProps {
   tools?: ReactNode;
 }
 
+type FloorEndpoint = { kind: 'device' | 'board'; id: string };
 type View = { x: number; y: number; width: number; height: number };
 type Drag = {
   mode: 'pan' | 'device' | 'note' | 'bend' | 'segment' | 'board';
@@ -93,7 +94,7 @@ export function FloorPlan({
   const [view, setView] = useState<View>(fit);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layers, setLayers] = useState({ background: true, devices: true, routes: true, notes: true, grid: false });
-  const [fromId, setFromId] = useState<string | null>(null);
+  const [fromEndpoint, setFromEndpoint] = useState<FloorEndpoint | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedBend, setSelectedBend] = useState<{ routeId: string; index: number; point: Point } | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -116,7 +117,7 @@ export function FloorPlan({
 
   useEffect(() => {
     setView(fit());
-    setFromId(null);
+    setFromEndpoint(null);
     setScaleStart(null);
     setSelectedRouteId(null);
     setSelectedNoteId(null);
@@ -125,7 +126,7 @@ export function FloorPlan({
     draftRef.current = null;
   }, [sheetId, persistedSheet?.backgroundAssetId]); // Fit a newly imported background once.
   useEffect(() => {
-    setFromId(null);
+    setFromEndpoint(null);
     setScaleStart(null);
   }, [tool]);
   useEffect(() => {
@@ -171,7 +172,10 @@ export function FloorPlan({
   const selectedText = sheet.annotations.find((note) => note.id === selectedNoteId && note.kind === 'text');
   const selectedBoard = data.boards.find((board) => board.id === selectedBoardId);
   const selectedBoardPlacement = sheet.boardPlacements?.find((placement) => placement.boardId === selectedBoardId);
-  const fromPlacement = sheet.placements.find((p) => p.deviceId === fromId);
+  const endpointPoint = (endpoint: FloorEndpoint) => endpoint.kind === 'device'
+    ? sheet.placements.find((placement) => placement.deviceId === endpoint.id)
+    : sheet.boardPlacements?.find((placement) => placement.boardId === endpoint.id);
+  const fromPlacement = fromEndpoint ? endpointPoint(fromEndpoint) : undefined;
   const fittedWidth = fit().width;
   const zoomPercent = Math.round((fittedWidth / view.width) * 100);
 
@@ -216,7 +220,12 @@ export function FloorPlan({
   };
   const removeSelected = () => {
     if (selectedBoardId && selectedBoardPlacement) {
-      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.filter((placement) => placement.boardId !== selectedBoardId) }));
+      if (sheet.routes.some((route) => route.fromBoardId === selectedBoardId || route.toBoardId === selectedBoardId) &&
+        !window.confirm(t('Az elosztó eltávolításával a hozzá kapcsolódó nyomvonalak is törlődnek erről a tervlapról. Folytatod?'))) return;
+      updateSheet((s) => ({ ...s,
+        boardPlacements: s.boardPlacements?.filter((placement) => placement.boardId !== selectedBoardId),
+        routes: s.routes.filter((route) => route.fromBoardId !== selectedBoardId && route.toBoardId !== selectedBoardId)
+      }));
       setSelectedBoardId(null);
       onNotify(t('Az elosztó lekerült a tervlapról. Az elosztóterv megmaradt.'));
     } else if (selectedRouteId) {
@@ -301,9 +310,7 @@ export function FloorPlan({
     const next = { x: d.origin.x + dx, y: d.origin.y + dy };
     if (d.mode === 'pan') setView({ ...d.view, x: d.view.x - dx, y: d.view.y - dy });
     if (d.mode === 'device') moveDevice(d.id, next);
-    if (d.mode === 'board')
-      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.map((placement) =>
-        placement.boardId === d.id ? { ...placement, ...snapped(next) } : placement) }));
+    if (d.mode === 'board') updateSheet((s) => moveSheetBoard(s, d.id, snapped(next)));
     if (d.mode === 'note')
       updateSheet((s) => ({
         ...s,
@@ -339,52 +346,62 @@ export function FloorPlan({
       suppressClick.current = false;
     }, 0);
   };
+  const chooseEndpoint = (endpoint: FloorEndpoint) => {
+    if (suppressClick.current) return;
+    if (!fromEndpoint) {
+      setFromEndpoint(endpoint);
+      setSelectedBoardId(null);
+      setSelectedRouteId(null);
+      setSelectedNoteId(null);
+      onSelect(null);
+      return;
+    }
+    const same = (a: FloorEndpoint, b: FloorEndpoint) => a.kind === b.kind && a.id === b.id;
+    if (same(fromEndpoint, endpoint)) {
+      setFromEndpoint(null);
+      return;
+    }
+    const a = endpointPoint(fromEndpoint);
+    const b = endpointPoint(endpoint);
+    if (!a || !b) { setFromEndpoint(null); return; }
+    const kind = tool === 'route' ? 'power' : 'control';
+    const matches = (route: Route, side: 'from' | 'to', value: FloorEndpoint) =>
+      value.kind === 'board'
+        ? (side === 'from' ? route.fromBoardId : route.toBoardId) === value.id
+        : (side === 'from' ? route.fromDeviceId : route.toDeviceId) === value.id;
+    if (sheet.routes.some((route) => route.kind === kind &&
+      ((matches(route, 'from', fromEndpoint) && matches(route, 'to', endpoint)) ||
+       (matches(route, 'to', fromEndpoint) && matches(route, 'from', endpoint))))) {
+      onNotify(t('Ez a kapcsolat már szerepel a tervlapon.'));
+      setFromEndpoint(null);
+      return;
+    }
+    const middle = (a.x + b.x) / 2;
+    const route: Route = {
+      id: uid(),
+      ...(fromEndpoint.kind === 'device' ? { fromDeviceId: fromEndpoint.id } : { fromBoardId: fromEndpoint.id }),
+      ...(endpoint.kind === 'device' ? { toDeviceId: endpoint.id } : { toBoardId: endpoint.id }),
+      kind,
+      circuitId: (fromEndpoint.kind === 'device' ? devices.get(fromEndpoint.id)?.circuitId : undefined) ??
+        (endpoint.kind === 'device' ? devices.get(endpoint.id)?.circuitId : undefined),
+      points: [
+        { x: a.x, y: a.y },
+        { x: middle, y: a.y },
+        { x: middle, y: b.y },
+        { x: b.x, y: b.y }
+      ]
+    };
+    updateSheet((s) => ({ ...s, routes: [...s.routes, route] }));
+    setFromEndpoint(null);
+    setSelectedBoardId(null);
+    onSelect(null);
+    setSelectedRouteId(route.id);
+    onNotify(t('Kapcsolat létrehozva. A töréspontokat húzással szerkesztheted.'));
+  };
   const deviceClick = (id: string) => {
     if (suppressClick.current) return;
     if (tool === 'route' || tool === 'control') {
-      if (!fromId) {
-        setFromId(id);
-        onSelect(null);
-        return;
-      }
-      if (fromId === id) {
-        setFromId(null);
-        return;
-      }
-      const a = sheet.placements.find((p) => p.deviceId === fromId);
-      const b = sheet.placements.find((p) => p.deviceId === id);
-      if (!a || !b) return;
-      const kind = tool === 'route' ? 'power' : 'control';
-      if (
-        sheet.routes.some(
-          (r) =>
-            r.kind === kind &&
-            ((r.fromDeviceId === fromId && r.toDeviceId === id) || (r.fromDeviceId === id && r.toDeviceId === fromId))
-        )
-      ) {
-        onNotify(t('Ez a kapcsolat már szerepel a tervlapon.'));
-        setFromId(null);
-        return;
-      }
-      const middle = (a.x + b.x) / 2;
-      const route: Route = {
-        id: uid(),
-        fromDeviceId: fromId,
-        toDeviceId: id,
-        kind,
-        circuitId: devices.get(fromId)?.circuitId ?? devices.get(id)?.circuitId,
-        points: [
-          { x: a.x, y: a.y },
-          { x: middle, y: a.y },
-          { x: middle, y: b.y },
-          { x: b.x, y: b.y }
-        ]
-      };
-      updateSheet((s) => ({ ...s, routes: [...s.routes, route] }));
-      setFromId(null);
-      onSelect(null);
-      setSelectedRouteId(route.id);
-      onNotify(t('Kapcsolat létrehozva. A töréspontokat húzással szerkesztheted.'));
+      chooseEndpoint({ kind: 'device', id });
       return;
     }
     onSelect(id);
@@ -418,7 +435,7 @@ export function FloorPlan({
       return;
     }
     if (tool === 'route' || tool === 'control') {
-      setFromId(null);
+      setFromEndpoint(null);
       return;
     }
     if (tool === 'note' || tool === 'text') {
@@ -460,7 +477,7 @@ export function FloorPlan({
       setSelectedRouteId(null);
       setSelectedNoteId(null);
       setSelectedBoardId(null);
-      setFromId(null);
+      setFromEndpoint(null);
       setScaleStart(null);
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -483,15 +500,14 @@ export function FloorPlan({
         x: selectedBoardPlacement.x + (e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0),
         y: selectedBoardPlacement.y + (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0)
       });
-      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.map((placement) =>
-        placement.boardId === selectedBoardId ? { ...placement, ...position } : placement) }));
+      updateSheet((s) => moveSheetBoard(s, selectedBoardPlacement.boardId, position));
     }
   };
   const onWheel = (e: WheelEvent<SVGSVGElement>) => {
     zoom(Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * 0.0015))), worldPoint(e.clientX, e.clientY));
   };
-  const colorFor = (deviceId: string, circuitId?: string) =>
-    circuits.get(devices.get(deviceId)?.circuitId ?? circuitId ?? '')?.color ?? '#28775b';
+  const colorFor = (deviceId: string | undefined, circuitId?: string) =>
+    circuits.get((deviceId ? devices.get(deviceId)?.circuitId : undefined) ?? circuitId ?? '')?.color ?? '#28775b';
   const routeLength = (route: Route) => {
     const points = floorRoutePoints(route, sheet);
     return (points.slice(1).reduce((total, p, i) => total + distance(points[i], p), 0) * (sheet.mmPerUnit ?? 0)) / 1000;
@@ -500,9 +516,9 @@ export function FloorPlan({
     tool === 'board'
       ? t('Válaszd ki az elosztót, majd kattints a helyére')
       : tool === 'route' || tool === 'control'
-      ? fromId
-        ? t('Válaszd ki a kapcsolat másik eszközét')
-        : t('Válaszd ki a kapcsolat első eszközét')
+      ? fromEndpoint
+        ? t('Válaszd ki a kapcsolat másik eszközét vagy elosztóját')
+        : t('Válaszd ki a kapcsolat első eszközét vagy elosztóját')
       : tool === 'scale'
         ? scaleStart
           ? t('Jelöld ki a mérési szakasz másik végét')
@@ -620,10 +636,10 @@ export function FloorPlan({
         <div className="floor-instruction" role="status">
           <Crosshair size={15} />
           <span>{instruction}</span>
-          {(fromId || scaleStart) && (
+          {(fromEndpoint || scaleStart) && (
             <button
               onClick={() => {
-                setFromId(null);
+                setFromEndpoint(null);
                 setScaleStart(null);
               }}
             >
@@ -867,20 +883,32 @@ export function FloorPlan({
         {layers.devices && sheet.boardPlacements?.map((placement) => {
           const board = data.boards.find((item) => item.id === placement.boardId);
           if (!board) return null;
+          const boardLabel = tool === 'route' || tool === 'control'
+            ? t('Elosztó kiválasztása kapcsolathoz: {name}', { name: board.name })
+            : t('Elosztó megnyitása: {name}', { name: board.name });
           return <g key={`board-${board.id}`} transform={`translate(${placement.x} ${placement.y})`}
             className={`floor-board-marker ${selectedBoardId === board.id ? 'selected' : ''}`}
-            role="button" tabIndex={0} aria-label={t('Elosztó megnyitása: {name}', { name: board.name })}
-            onFocus={() => { setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenBoard(board.id); } }}
-            onClick={(e) => e.stopPropagation()}
+            role="button" tabIndex={0} aria-label={boardLabel}
+            onFocus={() => {
+              if (tool === 'select') { setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null); }
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault(); e.stopPropagation();
+              if (tool === 'route' || tool === 'control') chooseEndpoint({ kind: 'board', id: board.id });
+              else if (tool === 'select') onOpenBoard(board.id);
+            } }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (tool === 'route' || tool === 'control') chooseEndpoint({ kind: 'board', id: board.id });
+            }}
             onPointerDown={(e) => {
               e.stopPropagation();
               if (tool !== 'select') return;
               setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null);
               startDrag(e, 'board', board.id, placement);
             }}>
-            <title>{t('Elosztó megnyitása: {name}', { name: board.name })}</title>
-            <rect x={-18} y={-22} width={36} height={44} rx={3} fill="#f2faf5" stroke="#28775b" strokeWidth={2}/>
+            <title>{boardLabel}</title>
+            <rect x={-18} y={-22} width={36} height={44} rx={3} fill="#f2faf5" stroke="#28775b" strokeWidth={fromEndpoint?.kind === 'board' && fromEndpoint.id === board.id ? 4 : 2}/>
             <path d="M-11 -10H11 M-11 0H11 M-11 10H11" fill="none" stroke="#28775b" strokeWidth={2}/>
             <text x={0} y={38} textAnchor="middle" fontSize={11} fontWeight={600} fill="#344d40" stroke="white" strokeWidth={3} paintOrder="stroke" pointerEvents="none">{board.name}</text>
           </g>;
@@ -890,7 +918,7 @@ export function FloorPlan({
             const device = devices.get(placement.deviceId);
             if (!device) return null;
             const selected = device.id === selectedId;
-            const connected = device.id === fromId;
+            const connected = fromEndpoint?.kind === 'device' && device.id === fromEndpoint.id;
             const color = colorFor(device.id);
             const appearance = getPlanAppearance(device, assets, display);
             const radians = placement.rotation * Math.PI / 180;
@@ -921,6 +949,7 @@ export function FloorPlan({
                   {device.code} · {device.name}
                   {device.room ? ` · ${device.room}` : ''}
                 </title>
+                <circle r={Math.max(12, halfExtent)} fill="transparent" pointerEvents="all" />
                 <PlanDeviceGraphic device={device} assets={assets} display={display} rotation={placement.rotation} color={color} highlighted={selected || connected} />
                 {device.status === 'verified' && (
                   <circle cx={appearance.kind === 'symbol' ? 14 : halfExtent - 3} cy={appearance.kind === 'symbol' ? -13 : -halfExtent + 3} r="3.5" fill="#22a76e" stroke="white" strokeWidth="1.5" />

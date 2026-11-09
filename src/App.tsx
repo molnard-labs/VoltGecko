@@ -43,6 +43,7 @@ import { ProjectBrowser } from './app/ProjectBrowser';
 import { placeBoardDevice } from './data/boardPlacement';
 import { DEFAULT_PLAN_IMAGE_SIZE } from './data/planAppearance';
 import { addPlanBackgrounds } from './data/planBackground';
+import { pwaUpdates } from './pwaUpdates';
 import { WorkspaceHeader } from './app/WorkspaceHeader';
 import { getNavigation, type View } from './app/navigation';
 import { LazyFeature } from './app/LazyFeature';
@@ -151,16 +152,21 @@ export default function App() {
     const on = () => setOnline(navigator.onLine);
     window.addEventListener('online', on);
     window.addEventListener('offline', on);
-    const update = (event: Event) => {
-      updateFn.current = (event as CustomEvent).detail;
+    const unsubscribeUpdate = pwaUpdates.subscribe((apply) => {
+      updateFn.current = apply;
       setUpdateAvailable(true);
+    });
+    const updateEvent = (event: Event) => {
+      const apply = (event as CustomEvent).detail;
+      if (typeof apply === 'function') pwaUpdates.publish(apply);
     };
-    window.addEventListener('app-update', update);
+    window.addEventListener('app-update', updateEvent);
     if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(() => setOfflineReady(true)).catch(() => {});
     return () => {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', on);
-      window.removeEventListener('app-update', update);
+      window.removeEventListener('app-update', updateEvent);
+      unsubscribeUpdate();
     };
   }, []);
   useEffect(() => {
@@ -672,7 +678,8 @@ export default function App() {
                               aria-label={drawingTool.label}
                               title={drawingTool.label}
                               disabled={drawingTool.id === 'board' && data.boards.length === 0}
-                              className={tool === drawingTool.id ? 'active' : ''}
+                              className={`${tool === drawingTool.id ? 'active' : ''}${drawingTool.id === 'board' ? ' floor-board-tool' : ''}`.trim()}
+                              aria-pressed={tool === drawingTool.id}
                               onClick={() => {
                                 setTool(drawingTool.id as Tool);
                                 if (drawingTool.id !== 'select') setSelectedId(null);
@@ -683,6 +690,7 @@ export default function App() {
                               }}
                             >
                               <drawingTool.icon size={19} />
+                              {drawingTool.id === 'board' && <span>{drawingTool.label}</span>}
                             </button>
                           ))}
                         </div>

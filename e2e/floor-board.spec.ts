@@ -7,6 +7,7 @@ test('places, moves, saves and opens the chosen distribution board from the floo
   await page.addInitScript(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }));
   await page.goto('/');
   await chooseSample(page);
+  await expect(page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).getByText('Elosztó elhelyezése')).toBeVisible();
   await page.locator('.view-tabs').getByRole('button', { name:'Elosztó', exact:true }).click();
   page.once('dialog', dialog => dialog.accept('Műhely elosztó'));
   await page.getByRole('button', { name:'Új elosztó', exact:true }).click();
@@ -59,9 +60,11 @@ test('opens a floor-plan board with the keyboard', async ({ page }) => {
 });
 
 test('opens a board marker with a touch tap', async ({ browser, baseURL }) => {
-  const context = await browser.newContext({ baseURL, hasTouch:true, isMobile:true, viewport:{width:390,height:844} });
+  const context = await browser.newContext({ baseURL, hasTouch:true, isMobile:true, viewport:{width:320,height:844} });
   const page = await context.newPage();
   await page.goto('/'); await chooseSample(page);
+  await expect(page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).getByText('Elosztó elhelyezése')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).tap();
   const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
   await page.locator('.floor-svg').tap({ position:{x:180,y:160} });

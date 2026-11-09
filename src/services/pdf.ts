@@ -13,6 +13,7 @@ import { getBoardConnectionIssues } from '../data/boardConnections';
 import { getWiringIssues, wiringEndpointLabel, getPhaseLoads } from '../data/boardWiring';
 import { diagramTiles } from './diagramPages';
 import { getFloorPlanDisplay, getPlanAppearance } from '../data/planAppearance';
+import { floorRouteEndpoint, floorRoutePoints } from '../data/floorRoute';
 
 type Audience = 'client' | 'professional';
 const PAGE_W = 420, PAGE_H = 297, MARGIN = 18, WIDTH = PAGE_W - 2 * MARGIN;
@@ -201,11 +202,10 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       pdf.addImage(canvas, 'PNG', x, top, sheet.width * scale, sheet.height * scale, undefined, 'FAST');
       canvas.width = 0; canvas.height = 0;
     }
-    const placements = new Map(sheet.placements.map(placement => [placement.deviceId, placement]));
     for (const route of sheet.routes) {
-      const from = placements.get(route.fromDeviceId), to = placements.get(route.toDeviceId);
+      const from = floorRouteEndpoint(route, 'from', sheet), to = floorRouteEndpoint(route, 'to', sheet);
       if (!from || !to) continue;
-      const points = [from, ...route.points, to];
+      const points = floorRoutePoints(route, sheet);
       const circuit = route.circuitId ? circuitMap.get(route.circuitId) : undefined;
       pdf.setDrawColor(route.kind === 'control' ? '#9a60ba' : circuit?.color || TEAL);
       pdf.setLineWidth(route.kind === 'control' ? 0.45 : 0.65);
@@ -424,8 +424,10 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     table(t('Eszközjegyzék'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Mag. mm', 'Modell', 'Állapot', 'Megjegyzés'], [43, 54, 30, 24, 20, 47, 27, 139], doc.data.devices.map(device => [device.code, `${device.name}\n${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', String(device.heightMm), [device.model, device.product && !device.model.includes(device.product.reference) ? device.product.reference : ''].filter(Boolean).join('\n'), t(statuses[device.status]), [device.product?.description?.[getLanguage()], device.notes].filter(Boolean).join('\n')]));
     const loadLabels={socket:'Dugalj',lamp:'Világítás',motor:'Motor',other:'Egyéb fogyasztó'};
     table(t('Áramkörjegyzék'), ['Áramkör', 'Megnevezés', 'Védelem', 'Hozzárendelt fogyasztók', 'Kábel', 'Telj. W', 'Megjegyzés'], [25, 65, 35, 74, 60, 25, 100], doc.data.circuits.map(circuit => [circuit.code, [circuit.name,circuit.loadType?t(loadLabels[circuit.loadType]):''].filter(Boolean).join('\n'), circuit.protectionDeviceId ? deviceMap.get(circuit.protectionDeviceId)?.code || '' : '', doc.data.devices.filter(device => device.circuitId === circuit.id).map(device => `${device.code} · ${device.name}`).join('\n'), circuitCableLabel(circuit),circuit.powerW===undefined?'':circuit.powerW.toLocaleString(locale),circuit.notes]));
-    const routes = doc.data.sheets.flatMap(sheet => sheet.routes.map(route => [sheet.name, route.kind === 'control' ? t('Vezérlés') : t('Tápellátás'), deviceMap.get(route.fromDeviceId)?.code || '', deviceMap.get(route.toDeviceId)?.code || '', route.circuitId ? circuitMap.get(route.circuitId)?.code || '' : '']));
-    table(t('Kapcsolatjegyzék'), ['Tervlap', 'Kapcsolat', 'Kiinduló eszköz', 'Cél eszköz', 'Áramkör'], [90, 55, 90, 90, 59], routes);
+    const routeEndName = (deviceId: string | undefined, boardId: string | undefined) =>
+      deviceId ? deviceMap.get(deviceId)?.code || '' : boardId ? doc.data.boards.find(board => board.id === boardId)?.name || '' : '';
+    const routes = doc.data.sheets.flatMap(sheet => sheet.routes.map(route => [sheet.name, route.kind === 'control' ? t('Vezérlés') : t('Tápellátás'), routeEndName(route.fromDeviceId, route.fromBoardId), routeEndName(route.toDeviceId, route.toBoardId), route.circuitId ? circuitMap.get(route.circuitId)?.code || '' : '']));
+    table(t('Kapcsolatjegyzék'), ['Tervlap', 'Kapcsolat', 'Kiinduló pont', 'Célpont', 'Áramkör'], [90, 55, 90, 90, 59], routes);
   } else {
     table(t('Mi hova kerül?'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Állapot'], [43, 128, 70, 55, 88], doc.data.devices.map(device => [device.code, `${device.name} · ${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', t(statuses[device.status])]));
   }

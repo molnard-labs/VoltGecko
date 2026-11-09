@@ -89,8 +89,10 @@ export function deleteBoard(data: ProjectData, id: string): ProjectData {
   const infeeds = new Set(board.wiring?.infeeds.map((infeed) => infeed.id) ?? []);
   const next = structuredClone(data);
   next.boards = next.boards.filter((item) => item.id !== id);
-  for (const sheet of next.sheets) if (sheet.boardPlacements)
-    sheet.boardPlacements = sheet.boardPlacements.filter((placement) => placement.boardId !== id);
+  for (const sheet of next.sheets) {
+    if (sheet.boardPlacements) sheet.boardPlacements = sheet.boardPlacements.filter((placement) => placement.boardId !== id);
+    sheet.routes = sheet.routes.filter(route => route.fromBoardId !== id && route.toBoardId !== id);
+  }
   for (const device of next.devices) if (device.boardId === id) delete device.boardId;
   for (const other of next.boards) {
     if (other.wiring) other.wiring.wires = other.wiring.wires.filter((wire) =>

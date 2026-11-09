@@ -17,5 +17,13 @@ import './app/sidebar-catalog.css';
 import './appearance.css';
 import './components/board-cabinet.css';
 import './theme';
-const updateSW = registerSW({ onNeedRefresh() { window.dispatchEvent(new CustomEvent('app-update', { detail: () => updateSW(true) })); } });
+import { pwaUpdates, watchPwaUpdates } from './pwaUpdates';
+let stopUpdateWatch: (() => void) | undefined;
+const updateSW = registerSW({
+  onNeedRefresh() { pwaUpdates.publish(() => updateSW(true)); },
+  onRegisteredSW(_url, registration) {
+    stopUpdateWatch?.();
+    if (registration) stopUpdateWatch = watchPwaUpdates(registration, window, document, () => navigator.onLine);
+  }
+});
 createRoot(document.getElementById('root')!).render(<StrictMode><App/></StrictMode>);
