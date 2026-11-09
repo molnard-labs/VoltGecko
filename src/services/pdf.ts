@@ -162,6 +162,10 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     }));
     const rasters = new Map<string, PlanRaster>();
     let minX = 0, minY = 0, maxX = sheet.width, maxY = sheet.height;
+    for (const placement of sheet.boardPlacements ?? []) {
+      minX = Math.min(minX, placement.x - 18); minY = Math.min(minY, placement.y - 22);
+      maxX = Math.max(maxX, placement.x + 18); maxY = Math.max(maxY, placement.y + 38);
+    }
     for (const placement of sheet.placements) {
       let appearance = appearances.get(placement.deviceId);
       if (!appearance || appearance.kind === 'symbol') continue;
@@ -267,6 +271,20 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       }
       pdf.setFillColor('#ffffff'); pdf.rect(selected.x, selected.y, selected.w, selected.h, 'F');
       text(shortText(pdf, label, width - 1), selected.x + 0.5, selected.y + 2.9, 7);
+    }
+    for (const placement of sheet.boardPlacements ?? []) {
+      const board = doc.data.boards.find(item => item.id === placement.boardId);
+      if (!board) continue;
+      const cx = px(placement.x), cy = py(placement.y);
+      const width = Math.max(4.2, Math.min(8, 36 * scale)), height = width * 44 / 36;
+      pdf.setFillColor('#f4faf6'); pdf.setDrawColor('#28775b'); pdf.setLineWidth(0.25);
+      pdf.rect(cx - width / 2, cy - height / 2, width, height, 'FD');
+      pdf.setLineWidth(0.2);
+      for (const offset of [-10, 0, 10])
+        pdf.line(cx - width * 11 / 36, cy + offset * width / 36, cx + width * 11 / 36, cy + offset * width / 36);
+      const label = shortText(pdf, board.name, 38, 7);
+      pdf.setFontSize(7);
+      text(label, cx - pdf.getTextWidth(label) / 2, cy + height / 2 + 3.2, 7, '#28775b');
     }
     const legendDevices = [...new Map(sheet.placements.flatMap(placement => {
       const device = deviceMap.get(placement.deviceId);

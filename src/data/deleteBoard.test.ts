@@ -8,6 +8,7 @@ describe('deleteBoard', () => {
   it('keeps devices and surviving wiring, removes cross-board references to deleted buses and infeeds, and round-trips', async () => {
     const doc = createProject('Board deletion');
     const deleted = doc.data.boards[0];
+    doc.data.sheets[0].boardPlacements = [{boardId:deleted.id, x:50, y:70}, {boardId:'keep-board',x:80,y:100}];
     const device = makeDevice('breaker', []);
     device.boardId = deleted.id;
     doc.data.devices.push(device);
@@ -28,6 +29,7 @@ describe('deleteBoard', () => {
     const next = deleteBoard(doc.data, deleted.id);
     expect(doc.data).toEqual(before);
     expect(next.boards.map(board => board.id)).toEqual(['keep-board']);
+    expect(next.sheets[0].boardPlacements).toEqual([{boardId:'keep-board',x:80,y:100}]);
     expect(next.devices[0].id).toBe(device.id);
     expect(next.devices[0].boardId).toBeUndefined();
     expect(next.boards[0].wiring?.wires.map(wire => wire.id)).toEqual(['remaining-wire']);

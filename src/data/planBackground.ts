@@ -1,6 +1,6 @@
 import type { Asset, PlanSheet, ProjectDocument } from '../types';
 
-export const isEmptyPlanSheet = (sheet: PlanSheet) => !sheet.backgroundAssetId && !sheet.placements.length && !sheet.routes.length && !sheet.annotations.length;
+export const isEmptyPlanSheet = (sheet: PlanSheet) => !sheet.backgroundAssetId && !sheet.placements.length && !sheet.boardPlacements?.length && !sheet.routes.length && !sheet.annotations.length;
 
 /** Fill an unused sheet once; existing drawing content always keeps its coordinates. */
 export function addPlanBackgrounds(document: ProjectDocument, imported: { sheet: PlanSheet; assets: Asset[] }[], targetSheetId: string) {

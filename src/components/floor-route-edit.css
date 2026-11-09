@@ -1,0 +1,5 @@
+.floor-route-segment { stroke: transparent; stroke-width: 16px; pointer-events: stroke; touch-action: none; }
+.floor-route-segment.horizontal { cursor: ns-resize; }
+.floor-route-segment.vertical { cursor: ew-resize; }
+.floor-bend { touch-action: none; }
+.floor-route-segment:focus-visible, .floor-bend:focus-visible { outline: none; stroke: var(--focus, #096777); stroke-width: 3px; }

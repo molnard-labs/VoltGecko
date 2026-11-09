@@ -5,6 +5,7 @@ import {
   FileImage,
   FileText,
   FolderOpen,
+  LayoutGrid,
   LoaderCircle,
   MousePointer2,
   MoreVertical,
@@ -649,6 +650,8 @@ export default function App() {
                       onSelect={setSelectedId}
                       onChange={changeData}
                       onAddDevice={addDevice}
+                      onOpenBoard={(id) => { setBoardId(id); setSelectedId(null); setView('board'); }}
+                      onBoardPlaced={() => setTool('select')}
                       deviceToolLabel={catalogEntry?.label}
                       onNotify={notify}
                       onUploadBackground={() => backgroundInput.current?.click()}
@@ -657,6 +660,7 @@ export default function App() {
                         <div className="drawing-tools" aria-label={t('Rajzeszközök')}>
                           {[
                             { id: 'select', icon: MousePointer2, label: t('Kijelölés és mozgatás') },
+                            { id: 'board', icon: LayoutGrid, label: t('Elosztó elhelyezése') },
                             { id: 'route', icon: Zap, label: t('Kapcsolat / nyomvonal') },
                             { id: 'control', icon: Settings2, label: t('Vezérlési kapcsolat') },
                             { id: 'note', icon: FileText, label: t('Megjegyzés a rajzon') },
@@ -667,6 +671,7 @@ export default function App() {
                               key={drawingTool.id}
                               aria-label={drawingTool.label}
                               title={drawingTool.label}
+                              disabled={drawingTool.id === 'board' && data.boards.length === 0}
                               className={tool === drawingTool.id ? 'active' : ''}
                               onClick={() => {
                                 setTool(drawingTool.id as Tool);

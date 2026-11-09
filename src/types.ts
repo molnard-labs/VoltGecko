@@ -16,9 +16,11 @@ export interface Device {
   planImage?: { assetId: string; size: number; opacity: number };
 }
 export interface Placement extends Point { deviceId: string; rotation: number }
+/** Location of an existing distribution board on a drawing sheet. */
+export interface FloorBoardPlacement extends Point { boardId: string }
 export interface Route { id: string; fromDeviceId: string; toDeviceId: string; kind: 'power' | 'control'; circuitId?: string; points: Point[] }
 export interface Annotation extends Point { id: string; text: string; kind?: 'text'; fontSize?: number; color?: string }
-export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; routes: Route[]; annotations: Annotation[] }
+export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; boardPlacements?: FloorBoardPlacement[]; routes: Route[]; annotations: Annotation[] }
 export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
 export interface BoardPlacement { deviceId: string; start: number }
 export interface BoardRow { id: string; name: string; capacity: number; placements: BoardPlacement[] }

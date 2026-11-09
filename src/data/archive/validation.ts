@@ -376,6 +376,17 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       if (sheet.backgroundOpacity < 0) fail('az alaprajz fedettsége 0 és 1 közötti szám legyen.');
     }
     array(sheet.placements, 'Elhelyezések');
+    if (sheet.boardPlacements !== undefined) {
+      array(sheet.boardPlacements, 'Elosztók elhelyezése', 500);
+      const placedBoards = new Set<string>();
+      for (const placement of sheet.boardPlacements) {
+        object(placement, 'Elosztó elhelyezése');
+        reference(placement.boardId, boards, 'Elhelyezett elosztó');
+        if (placedBoards.has(placement.boardId as string)) fail('egy elosztó ugyanazon a tervlapon kétszer szerepel.');
+        placedBoards.add(placement.boardId as string);
+        point(placement, 'Elosztó elhelyezése');
+      }
+    }
     array(sheet.routes, 'Kapcsolatok');
     array(sheet.annotations, 'Feliratok');
     const placed = new Set<string>();

@@ -21,11 +21,12 @@ describe('floor-plan background import', () => {
     expect(original.data.sheets[0].backgroundAssetId).toBeUndefined();
   });
 
-  it.each(['background', 'placements', 'annotations', 'routes'])('preserves a sheet with existing %s content', (content) => {
+  it.each(['background', 'placements', 'board', 'annotations', 'routes'])('preserves a sheet with existing %s content', (content) => {
     const original = createProject('Existing');
     const sheet = original.data.sheets[0];
     if (content === 'background') sheet.backgroundAssetId = 'existing';
     if (content === 'placements') sheet.placements.push({ deviceId: 'd', x: 15, y: 30, rotation: 90 });
+    if (content === 'board') sheet.boardPlacements = [{ boardId: original.data.boards[0].id, x: 45, y: 60 }];
     if (content === 'annotations') sheet.annotations.push({ id: 'n', text: 'Keep', x: 10, y: 20 });
     if (content === 'routes') sheet.routes.push({ id: 'r', fromDeviceId: 'a', toDeviceId: 'b', kind: 'power', points: [] });
     const result = addPlanBackgrounds(original, [imported('new')], sheet.id);

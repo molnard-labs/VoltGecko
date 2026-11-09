@@ -17,19 +17,25 @@ import {
 import type { Asset, DeviceKind, PlanSheet, Point, ProjectData, Route } from '../types';
 import { kindLabel, uid } from '../catalog';
 import { moveSheetDevice } from '../data/floorPlan';
+import { floorRoutePoints } from '../data/floorRoute';
 import { isEmptyPlanSheet } from '../data/planBackground';
 import { getFloorPlanDisplay, getPlanAppearance, getPlanSheetBounds } from '../data/planAppearance';
 import { PlanDeviceGraphic } from './PlanDeviceGraphic';
+import './floor-board.css';
+import { insertWireBend, moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend } from './board-wiring/wireEditing';
+import './floor-route-edit.css';
 
 export interface FloorPlanProps {
   data: ProjectData;
   assets: Record<string, Asset>;
   sheetId: string;
   selectedId: string | null;
-  tool: DeviceKind | 'select' | 'route' | 'control' | 'note' | 'text' | 'scale';
+  tool: DeviceKind | 'select' | 'route' | 'control' | 'note' | 'text' | 'scale' | 'board';
   onSelect: (id: string | null) => void;
   onChange: (data: ProjectData) => void;
   onAddDevice: (kind: DeviceKind, sheetId: string, point: Point) => void;
+  onOpenBoard: (id: string) => void;
+  onBoardPlaced: () => void;
   onNotify: (message: string) => void;
   onUploadBackground?: () => void;
   onDropBackground?: (files: File[]) => void;
@@ -39,7 +45,7 @@ export interface FloorPlanProps {
 
 type View = { x: number; y: number; width: number; height: number };
 type Drag = {
-  mode: 'pan' | 'device' | 'note' | 'bend';
+  mode: 'pan' | 'device' | 'note' | 'bend' | 'segment' | 'board';
   id: string;
   pointerId: number;
   start: Point;
@@ -49,6 +55,7 @@ type Drag = {
   d: number;
   moved: boolean;
   bendIndex?: number;
+  routePoints?: Point[];
 };
 type Pinch = { distance: number; point: Point; view: View; matrix: DOMMatrix };
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -68,6 +75,8 @@ export function FloorPlan({
   onSelect,
   onChange,
   onAddDevice,
+  onOpenBoard,
+  onBoardPlaced,
   onNotify,
   onUploadBackground,
   onDropBackground,
@@ -86,7 +95,10 @@ export function FloorPlan({
   const [layers, setLayers] = useState({ background: true, devices: true, routes: true, notes: true, grid: false });
   const [fromId, setFromId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [selectedBend, setSelectedBend] = useState<{ routeId: string; index: number; point: Point } | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const [boardToPlace, setBoardToPlace] = useState(data.boards[0]?.id ?? '');
   const [scaleStart, setScaleStart] = useState<Point | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -108,6 +120,7 @@ export function FloorPlan({
     setScaleStart(null);
     setSelectedRouteId(null);
     setSelectedNoteId(null);
+    setSelectedBoardId(null);
     setDraftSheet(null);
     draftRef.current = null;
   }, [sheetId, persistedSheet?.backgroundAssetId]); // Fit a newly imported background once.
@@ -115,6 +128,13 @@ export function FloorPlan({
     setFromId(null);
     setScaleStart(null);
   }, [tool]);
+  useEffect(() => {
+    if (!data.boards.some(board => board.id === boardToPlace)) setBoardToPlace(data.boards[0]?.id ?? '');
+  }, [data.boards, boardToPlace]);
+  useEffect(() => {
+    if (selectedId || selectedRouteId || selectedNoteId) setSelectedBoardId(null);
+  }, [selectedId, selectedRouteId, selectedNoteId]);
+  useEffect(() => { setSelectedBend(null); }, [selectedRouteId, sheetId]);
   useEffect(() => {
     if (!selectedId) return;
     setSelectedRouteId(null);
@@ -141,7 +161,16 @@ export function FloorPlan({
   const selectedPlacement = sheet.placements.find((p) => p.deviceId === selectedId);
   const selectedDevice = selectedId ? devices.get(selectedId) : undefined;
   const selectedRoute = sheet.routes.find((r) => r.id === selectedRouteId);
+  const selectedRoutePoints = selectedRoute ? floorRoutePoints(selectedRoute, sheet) : [];
+  const selectedBendIndex = (() => {
+    if (!selectedBend || selectedBend.routeId !== selectedRouteId) return -1;
+    const matches = (point:Point | undefined) => point?.x === selectedBend.point.x && point?.y === selectedBend.point.y;
+    if (selectedBend.index > 0 && selectedBend.index < selectedRoutePoints.length - 1 && matches(selectedRoutePoints[selectedBend.index])) return selectedBend.index;
+    return selectedRoutePoints.findIndex((point, index) => index > 0 && index < selectedRoutePoints.length - 1 && matches(point));
+  })();
   const selectedText = sheet.annotations.find((note) => note.id === selectedNoteId && note.kind === 'text');
+  const selectedBoard = data.boards.find((board) => board.id === selectedBoardId);
+  const selectedBoardPlacement = sheet.boardPlacements?.find((placement) => placement.boardId === selectedBoardId);
   const fromPlacement = sheet.placements.find((p) => p.deviceId === fromId);
   const fittedWidth = fit().width;
   const zoomPercent = Math.round((fittedWidth / view.width) * 100);
@@ -169,8 +198,28 @@ export function FloorPlan({
     y: Math.max(0, Math.min(sheet.height, layers.grid ? Math.round(p.y / 10) * 10 : p.y))
   });
   const moveDevice = (id: string, point: Point) => updateSheet((s) => moveSheetDevice(s, id, snapped(point)));
+  const removeSelectedBend = () => {
+    if (!selectedRoute || selectedBendIndex < 1) return false;
+    const current = orthogonalRoute(selectedRoutePoints);
+    const target = selectedBend!.point;
+    const index = current.findIndex((point, i) => i > 0 && i < current.length - 1 && point.x === target.x && point.y === target.y);
+    if (index < 1) { setSelectedBend(null); return true; }
+    const interior = removeWireBend(current, index - 1, layers.grid);
+    if (JSON.stringify(interior) === JSON.stringify(current.slice(1, -1))) {
+      onNotify(t('A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.'));
+      return true;
+    }
+    const points = [current[0], ...interior, current[current.length - 1]];
+    updateSheet((s) => ({ ...s, routes: s.routes.map((r) => r.id === selectedRoute.id ? { ...r, points } : r) }));
+    setSelectedBend(null);
+    return true;
+  };
   const removeSelected = () => {
-    if (selectedRouteId) {
+    if (selectedBoardId && selectedBoardPlacement) {
+      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.filter((placement) => placement.boardId !== selectedBoardId) }));
+      setSelectedBoardId(null);
+      onNotify(t('Az elosztó lekerült a tervlapról. Az elosztóterv megmaradt.'));
+    } else if (selectedRouteId) {
       updateSheet((s) => ({ ...s, routes: s.routes.filter((r) => r.id !== selectedRouteId) }));
       setSelectedRouteId(null);
     } else if (selectedNoteId) {
@@ -206,7 +255,7 @@ export function FloorPlan({
       }
     }
   };
-  const startDrag = (e: ReactPointerEvent, mode: Drag['mode'], id: string, origin: Point, bendIndex?: number) => {
+  const startDrag = (e: ReactPointerEvent, mode: Drag['mode'], id: string, origin: Point, bendIndex?: number, routePoints?: Point[]) => {
     if (pinch.current || e.button > 0) return;
     const m = svg.current?.getScreenCTM()?.inverse();
     if (!m) return;
@@ -220,7 +269,8 @@ export function FloorPlan({
       a: m.a,
       d: m.d,
       moved: false,
-      bendIndex
+      bendIndex,
+      routePoints: routePoints?.map(point => ({ ...point }))
     };
     svg.current?.setPointerCapture(e.pointerId);
   };
@@ -251,24 +301,29 @@ export function FloorPlan({
     const next = { x: d.origin.x + dx, y: d.origin.y + dy };
     if (d.mode === 'pan') setView({ ...d.view, x: d.view.x - dx, y: d.view.y - dy });
     if (d.mode === 'device') moveDevice(d.id, next);
+    if (d.mode === 'board')
+      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.map((placement) =>
+        placement.boardId === d.id ? { ...placement, ...snapped(next) } : placement) }));
     if (d.mode === 'note')
       updateSheet((s) => ({
         ...s,
         annotations: s.annotations.map((n) => (n.id === d.id ? { ...n, ...snapped(next) } : n))
       }));
-    if (d.mode === 'bend')
-      updateSheet((s) => ({
-        ...s,
-        routes: s.routes.map((r) =>
-          r.id === d.id ? { ...r, points: r.points.map((v, i) => (i === d.bendIndex ? snapped(next) : v)) } : r
-        )
-      }));
+    if ((d.mode === 'bend' || d.mode === 'segment') && d.routePoints && d.bendIndex !== undefined) {
+      const result = d.mode === 'bend'
+        ? moveWireBend(d.routePoints, d.bendIndex, snapped(next), layers.grid)
+        : moveWireSegment(d.routePoints, d.bendIndex, snapped(next), layers.grid);
+      updateSheet((s) => ({ ...s, routes: s.routes.map((r) => r.id === d.id ? { ...r, points: result.route } : r) }));
+      if (d.mode === 'bend') setSelectedBend({ routeId:d.id, index:result.index, point:result.route[result.index] });
+    }
   };
   const onUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
     // The SVG owns pointer capture during drags. Selection already happened on
     // pointerdown, so its synthetic canvas click must not clear that selection.
+    const completedBoardClick = e.type !== 'pointercancel' && drag.current?.pointerId === e.pointerId &&
+      drag.current.mode === 'board' && !drag.current.moved ? drag.current.id : null;
     if (drag.current?.mode && drag.current.mode !== 'pan') suppressClick.current = true;
     drag.current = null;
     setDragging(false);
@@ -279,6 +334,7 @@ export function FloorPlan({
       onChange({ ...dataRef.current, sheets: dataRef.current.sheets.map((s) => (s.id === sheetId ? committed : s)) });
     }
     if (svg.current?.hasPointerCapture(e.pointerId)) svg.current.releasePointerCapture(e.pointerId);
+    if (completedBoardClick) onOpenBoard(completedBoardClick);
     window.setTimeout(() => {
       suppressClick.current = false;
     }, 0);
@@ -343,6 +399,22 @@ export function FloorPlan({
       onSelect(null);
       setSelectedRouteId(null);
       setSelectedNoteId(null);
+      setSelectedBoardId(null);
+      return;
+    }
+    if (tool === 'board') {
+      if (!data.boards.some((board) => board.id === boardToPlace)) return;
+      if (sheet.boardPlacements?.some((placement) => placement.boardId === boardToPlace)) {
+        onNotify(t('Ez az elosztó már szerepel ezen a tervlapon.'));
+        return;
+      }
+      updateSheet((s) => ({ ...s, boardPlacements: [...(s.boardPlacements ?? []), { boardId: boardToPlace, ...p }] }));
+      setSelectedBoardId(boardToPlace);
+      setSelectedRouteId(null);
+      setSelectedNoteId(null);
+      onSelect(null);
+      onBoardPlaced();
+      onNotify(t('Elosztó elhelyezve. Kattints rá az elosztóterv megnyitásához.'));
       return;
     }
     if (tool === 'route' || tool === 'control') {
@@ -387,11 +459,13 @@ export function FloorPlan({
       onSelect(null);
       setSelectedRouteId(null);
       setSelectedNoteId(null);
+      setSelectedBoardId(null);
       setFromId(null);
       setScaleStart(null);
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
+      if (removeSelectedBend()) return;
       removeSelected();
     }
     if (selectedPlacement && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
@@ -402,17 +476,30 @@ export function FloorPlan({
         y: selectedPlacement.y + (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0)
       });
     }
+    if (selectedBoardPlacement && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      const n = e.shiftKey ? 20 : 5;
+      const position = snapped({
+        x: selectedBoardPlacement.x + (e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0),
+        y: selectedBoardPlacement.y + (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0)
+      });
+      updateSheet((s) => ({ ...s, boardPlacements: s.boardPlacements?.map((placement) =>
+        placement.boardId === selectedBoardId ? { ...placement, ...position } : placement) }));
+    }
   };
   const onWheel = (e: WheelEvent<SVGSVGElement>) => {
     zoom(Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * 0.0015))), worldPoint(e.clientX, e.clientY));
   };
   const colorFor = (deviceId: string, circuitId?: string) =>
     circuits.get(devices.get(deviceId)?.circuitId ?? circuitId ?? '')?.color ?? '#28775b';
-  const routeLength = (route: Route) =>
-    (route.points.slice(1).reduce((total, p, i) => total + distance(route.points[i], p), 0) * (sheet.mmPerUnit ?? 0)) /
-    1000;
+  const routeLength = (route: Route) => {
+    const points = floorRoutePoints(route, sheet);
+    return (points.slice(1).reduce((total, p, i) => total + distance(points[i], p), 0) * (sheet.mmPerUnit ?? 0)) / 1000;
+  };
   const instruction =
-    tool === 'route' || tool === 'control'
+    tool === 'board'
+      ? t('Válaszd ki az elosztót, majd kattints a helyére')
+      : tool === 'route' || tool === 'control'
       ? fromId
         ? t('Válaszd ki a kapcsolat másik eszközét')
         : t('Válaszd ki a kapcsolat első eszközét')
@@ -468,6 +555,12 @@ export function FloorPlan({
       {fileOver && <div className="floor-drop-hint" role="status">{t('Engedd el az alaprajz feltöltéséhez')}</div>}
       <div className="floor-control-header">
         {tools}
+        {tool === 'board' && <label className="floor-board-picker">
+          <span>{t('Elhelyezendő elosztó')}</span>
+          <select aria-label={t('Elhelyezendő elosztó')} value={boardToPlace} onChange={(e) => setBoardToPlace(e.target.value)}>
+            {data.boards.map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}
+          </select>
+        </label>}
         <div className="floor-display-switch" role="group" aria-label={t('Alaprajzi megjelenítés')}>
           {(['symbols', 'images'] as const).map((mode) => <button
             type="button" key={mode} aria-pressed={display === mode}
@@ -560,7 +653,7 @@ export function FloorPlan({
         onContextMenu={(e) => e.preventDefault()}
       >
         <defs>
-          <pattern id="floor-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <pattern id="floor-grid" width="10" height="10" patternUnits="userSpaceOnUse">
             <circle cx="0" cy="0" r=".9" fill="#b8c4be" />
           </pattern>
           <filter id="floor-paper-shadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -623,6 +716,8 @@ export function FloorPlan({
           sheet.routes.map((route) => {
             const selected = route.id === selectedRouteId;
             const color = colorFor(route.fromDeviceId, route.circuitId);
+            const routePoints = floorRoutePoints(route, sheet);
+            const editablePoints = orthogonalRoute(routePoints);
             return (
               <g
                 key={route.id}
@@ -637,36 +732,42 @@ export function FloorPlan({
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  const p = worldPoint(e.clientX, e.clientY);
+                  const p = snapped(worldPoint(e.clientX, e.clientY));
                   let index = 1;
                   let best = Infinity;
-                  route.points.slice(1).forEach((v, i) => {
-                    const length = pointOnSegment(p, route.points[i], v);
+                  editablePoints.slice(1).forEach((v, i) => {
+                    const length = pointOnSegment(p, editablePoints[i], v);
                     if (length < best) {
                       best = length;
                       index = i + 1;
                     }
                   });
+                  if (editablePoints.length < 2) return;
+                  const a = editablePoints[index - 1], b = editablePoints[index];
+                  const point = a.x === b.x
+                    ? { x:a.x, y:Math.max(Math.min(a.y,b.y), Math.min(Math.max(a.y,b.y), p.y)) }
+                    : { x:Math.max(Math.min(a.x,b.x), Math.min(Math.max(a.x,b.x), p.x)), y:a.y };
                   updateSheet((s) => ({
                     ...s,
                     routes: s.routes.map((r) =>
                       r.id === route.id
-                        ? { ...r, points: [...r.points.slice(0, index), p, ...r.points.slice(index)] }
+                        ? { ...r, points: [...editablePoints.slice(0, index), point, ...editablePoints.slice(index)] }
                         : r
                     )
                   }));
                   setSelectedRouteId(route.id);
+                  setSelectedBend({ routeId:route.id, index, point });
                 }}
                 className="floor-route"
               >
                 <polyline
-                  points={route.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                  points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="transparent"
                   strokeWidth="18"
                 />
                 <polyline
-                  points={route.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                  points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke={color}
                   strokeWidth={selected ? 3 : 2}
@@ -675,20 +776,65 @@ export function FloorPlan({
                   strokeLinejoin="round"
                   pointerEvents="none"
                 />
+                {selected && routePoints.slice(0, -1).map((p, index) => {
+                  const next = routePoints[index + 1];
+                  if (p.x === next.x && p.y === next.y) return null;
+                  return <line key={`segment-${index}`} x1={p.x} y1={p.y} x2={next.x} y2={next.y}
+                    className={`floor-route-segment ${p.y === next.y ? 'horizontal' : 'vertical'}`}
+                    data-testid={`floor-route-segment-${index}`} role="button" tabIndex={0}
+                    aria-label={t('{number}. nyomvonalszakasz mozgatása', { number:index + 1 })}
+                    onPointerDown={(e) => {
+                      e.preventDefault(); e.stopPropagation(); e.currentTarget.focus(); setSelectedBend(null);
+                      const at = worldPoint(e.clientX, e.clientY);
+                      let nearest = 0, best = Infinity;
+                      editablePoints.slice(1).forEach((value, i) => {
+                        const distance = pointOnSegment(at, editablePoints[i], value);
+                        if (distance < best) { nearest = i; best = distance; }
+                      });
+                      startDrag(e, 'segment', route.id, at, nearest, editablePoints);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+                      e.preventDefault(); e.stopPropagation();
+                      const at = { x:(p.x + next.x) / 2, y:(p.y + next.y) / 2 };
+                      const indexInEdit = editablePoints.findIndex((point, i) => i < editablePoints.length - 1 && pointOnSegment(at, point, editablePoints[i + 1]) < 0.01);
+                      if (indexInEdit < 0) return;
+                      const n = e.shiftKey ? 20 : 5;
+                      const result = moveWireSegment(editablePoints, indexInEdit, { x:at.x + (e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0), y:at.y + (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0) }, layers.grid);
+                      updateSheet((s) => ({ ...s, routes:s.routes.map((r) => r.id === route.id ? { ...r, points:result.route } : r) }));
+                    }} />;
+                })}
                 {selected &&
-                  route.points.slice(1, -1).map((p, i) => (
+                  routePoints.slice(1, -1).map((p, i) => (
                     <circle
                       key={i}
                       cx={p.x}
                       cy={p.y}
                       r="5"
-                      fill="white"
+                      fill={selectedBendIndex === i + 1 ? color : 'white'}
                       stroke={color}
                       strokeWidth="2"
                       className="floor-bend"
+                      data-testid={`floor-route-bend-${i}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('{number}. nyomvonal töréspont', { number:i + 1 })}
                       onPointerDown={(e) => {
-                        e.stopPropagation();
-                        startDrag(e, 'bend', route.id, p, i + 1);
+                        e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
+                        setSelectedBend({ routeId:route.id, index:i + 1, point:p });
+                        const index = editablePoints.findIndex((point, index) => index > 0 && index < editablePoints.length - 1 && point.x === p.x && point.y === p.y);
+                        if (index > 0) startDrag(e, 'bend', route.id, p, index, editablePoints);
+                      }}
+                      onFocus={() => setSelectedBend({ routeId:route.id, index:i + 1, point:p })}
+                      onKeyDown={(e) => {
+                        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+                        e.preventDefault(); e.stopPropagation();
+                        const index = editablePoints.findIndex((point, index) => index > 0 && index < editablePoints.length - 1 && point.x === p.x && point.y === p.y);
+                        if (index < 1) return;
+                        const n = e.shiftKey ? 20 : 5;
+                        const result = moveWireBend(editablePoints, index, { x:p.x + (e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0), y:p.y + (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0) }, layers.grid);
+                        updateSheet((s) => ({ ...s, routes:s.routes.map((r) => r.id === route.id ? { ...r, points:result.route } : r) }));
+                        setSelectedBend({ routeId:route.id, index:result.index, point:result.route[result.index] });
                       }}
                     />
                   ))}
@@ -718,6 +864,27 @@ export function FloorPlan({
             )}
           </g>
         )}
+        {layers.devices && sheet.boardPlacements?.map((placement) => {
+          const board = data.boards.find((item) => item.id === placement.boardId);
+          if (!board) return null;
+          return <g key={`board-${board.id}`} transform={`translate(${placement.x} ${placement.y})`}
+            className={`floor-board-marker ${selectedBoardId === board.id ? 'selected' : ''}`}
+            role="button" tabIndex={0} aria-label={t('Elosztó megnyitása: {name}', { name: board.name })}
+            onFocus={() => { setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenBoard(board.id); } }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (tool !== 'select') return;
+              setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null);
+              startDrag(e, 'board', board.id, placement);
+            }}>
+            <title>{t('Elosztó megnyitása: {name}', { name: board.name })}</title>
+            <rect x={-18} y={-22} width={36} height={44} rx={3} fill="#f2faf5" stroke="#28775b" strokeWidth={2}/>
+            <path d="M-11 -10H11 M-11 0H11 M-11 10H11" fill="none" stroke="#28775b" strokeWidth={2}/>
+            <text x={0} y={38} textAnchor="middle" fontSize={11} fontWeight={600} fill="#344d40" stroke="white" strokeWidth={3} paintOrder="stroke" pointerEvents="none">{board.name}</text>
+          </g>;
+        })}
         {layers.devices &&
           sheet.placements.map((placement) => {
             const device = devices.get(placement.deviceId);
@@ -853,8 +1020,9 @@ export function FloorPlan({
             <span>{t('Méretarány nincs beállítva')}</span>
           )}
         </div>
-        {(selectedRoute || selectedNoteId || selectedPlacement) && (
+        {(selectedRoute || selectedNoteId || selectedPlacement || (selectedBoard && selectedBoardPlacement)) && (
           <div className="floor-selection-tools">
+            {selectedBoard && selectedBoardPlacement && <span>{t('Elosztó')}: {selectedBoard.name}</span>}
             {selectedDevice && selectedPlacement && (
               <>
                 <span>
@@ -886,7 +1054,24 @@ export function FloorPlan({
                     ? ` · ${routeLength(selectedRoute).toLocaleString(getLocale(), { maximumFractionDigits: 1 })} m`
                     : ''}
                 </span>
-                <small>{t('Töréspont: húzás · új pont: dupla kattintás')}</small>
+                <small>{t('Pont vagy szakasz: húzás · kijelölt pont: Delete')}</small>
+                <button
+                  title={t('Töréspont hozzáadása')}
+                  aria-label={t('Töréspont hozzáadása')}
+                  onClick={() => {
+                    const points = orthogonalRoute(selectedRoutePoints);
+                    if (points.length < 2) return;
+                    const interior = insertWireBend(points, layers.grid);
+                    updateSheet((s) => ({ ...s, routes:s.routes.map((r) => r.id === selectedRoute.id
+                      ? { ...r, points:[points[0], ...interior, points[points.length - 1]] } : r) }));
+                    setSelectedBend(null);
+                  }}
+                ><Plus size={16}/></button>
+                {selectedBendIndex > 0 && <button
+                  title={t('Kijelölt töréspont törlése')}
+                  aria-label={t('Kijelölt töréspont törlése')}
+                  onClick={removeSelectedBend}
+                ><Trash2 size={15}/></button>}
               </>
             )}
             {selectedNoteId && !selectedText && tool === 'note' && <span>{t('Megjegyzés · dupla kattintás: szerkesztés')}</span>}

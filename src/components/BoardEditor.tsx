@@ -19,7 +19,7 @@ export function BoardEditor({ data, boardId:active, onBoardChange:setActive, sel
     const id = uid(); onChange({ ...data, boards: [...data.boards, { id, name: name.trim(), rows: [{id:uid(),name:t('{number}. sor', {number:1}),capacity:12,placements:[]}] }] }); setActive(id);
   };
   const removeBoard = () => {
-    if (!board || !confirm(t('Törlöd a(z) „{name}” elosztót? A készülékek megmaradnak, de az elosztó sorai, sínjei, betáplálásai és vezetékei, valamint a törölt sínekhez vagy betáplálásokhoz kapcsolódó más elosztók vezetékei törlődnek.', {name: board.name}))) return;
+    if (!board || !confirm(t('Törlöd a(z) „{name}” elosztót? A készülékek megmaradnak, de az alaprajzi jelölései, sorai, sínjei, betáplálásai és vezetékei, valamint a törölt sínekhez vagy betáplálásokhoz kapcsolódó más elosztók vezetékei törlődnek.', {name: board.name}))) return;
     const next = deleteBoard(data, board.id);
     onChange(next);
     setActive(next.boards[0]?.id ?? '');

@@ -82,4 +82,16 @@ describe('service language boundaries', () => {
     expect(safeFilename(' . ')).toBe('villamos-terv');
     await expect(importBackground(new File([], 'empty.png', { type: 'image/png' }))).rejects.toThrow('A kiválasztott állomány üres.');
   });
+
+  it('includes the placed distribution board name on the floor-plan PDF page', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    const doc = createProject('Projekt');
+    doc.data.boards[0].name = 'Elosztó A';
+    await buildPdf(doc, 'client');
+    const without = pdfCalls.text.filter(value => value === 'Elosztó A').length;
+    pdfCalls.text.length = 0;
+    doc.data.sheets[0].boardPlacements = [{ boardId: doc.data.boards[0].id, x: 250, y: 250 }];
+    await buildPdf(doc, 'client');
+    expect(pdfCalls.text.filter(value => value === 'Elosztó A')).toHaveLength(without + 1);
+  });
 });
