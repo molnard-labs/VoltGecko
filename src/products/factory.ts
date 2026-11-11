@@ -1,7 +1,7 @@
 import { makeDevice, uid } from '../catalog';
 import { findFreeBoardSlot } from '../data/boardPlacement';
 import { getLanguage, t } from '../i18n';
-import type { Board, Device, ProjectData } from '../types';
+import type { Board, Device, Point, ProjectData } from '../types';
 import type { CatalogProduct, ProductSnapshot } from './types';
 
 /** Copy manufacturer facts into the project; later catalog updates must not alter a plan. */
@@ -51,7 +51,7 @@ export function createDeviceFromProduct(product: CatalogProduct, devices: Device
   if (product.mounting === 'din' && (!Number.isFinite(product.moduleWidth) || product.moduleWidth! <= 0)) {
     throw new Error(t('A készülékhez ellenőrzött gyártói modulszélesség szükséges.'));
   }
-  const device = makeDevice(product.kind, devices);
+  const device = makeDevice(product.kind, devices, product.variant);
   device.name = product.name[getLanguage()];
   device.model = `${product.manufacturer} ${product.reference}`;
   device.rating = rating(product);
@@ -73,6 +73,7 @@ export function addProductToProject(data: ProjectData, product: CatalogProduct, 
   data: ProjectData; selectedId: string | null; boardId: string; placed: boolean;
 } {
   if (!verified(product)) throw new Error(t('A termék gyártói forrása nincs ellenőrizve.'));
+  if (product.mounting === 'floor') throw new Error(t('Az alaprajzi terméket a tervlapon kell elhelyezni.'));
   const next = structuredClone(data);
   if (product.mounting === 'enclosure') {
     if (!Number.isInteger(product.boardRows) || product.boardRows! <= 0 || product.boardRows! > 1000
@@ -101,4 +102,19 @@ export function addProductToProject(data: ProjectData, product: CatalogProduct, 
   }
   // Keep the selected product in the project so that the user can make room later.
   return { data: next, selectedId: device.id, boardId: board.id, placed: false };
+}
+
+/** Place a manufacturer-backed floor device, preserving the selected variant and product snapshot. */
+export function addFloorProductToProject(data: ProjectData, product: CatalogProduct, sheetId: string, point: Point): {
+  data: ProjectData; selectedId: string;
+} {
+  if (product.mounting !== 'floor' || product.category === 'floor-accessory')
+    throw new Error(t('Ez a termék nem helyezhető el önállóan az alaprajzon.'));
+  const next = structuredClone(data);
+  const sheet = next.sheets.find(item => item.id === sheetId);
+  if (!sheet) throw new Error(t('A kiválasztott tervlap nem található.'));
+  const device = createDeviceFromProduct(product, next.devices);
+  next.devices.push(device);
+  sheet.placements.push({ deviceId: device.id, x: point.x, y: point.y, rotation: 0 });
+  return { data: next, selectedId: device.id };
 }

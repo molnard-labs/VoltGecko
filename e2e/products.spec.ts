@@ -7,7 +7,8 @@ import path from 'node:path';
 import type { ProjectDocument } from '../src/types';
 
 const outputDir = path.resolve('tmp/products-results');
-const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length + 10;
+const catalogCount = (JSON.parse(readFileSync(path.resolve('src/products/schneider-source.json'), 'utf8')) as { products: unknown[] }).products.length
+  + (JSON.parse(readFileSync(path.resolve('src/products/asfora-source.json'), 'utf8')) as { products: unknown[] }).products.length + 10;
 const library = (page: Page) => page.getByRole('dialog', { name: 'Gyártói termékkönyvtár', exact: true });
 const findProduct = async (dialog: Locator, reference: string) => {
   await dialog.getByRole('searchbox').fill(reference);
@@ -71,7 +72,7 @@ test('creates a manufacturer enclosure, adds exact module widths and archives ac
   await expect(accessory.locator('.product-specs dt').getByText('Modulszélesség', { exact: true })).toHaveCount(0);
   await accessory.getByRole('button', { name: 'Tartozék hozzáadása: R9XFH112', exact: true }).click();
   await dialog.getByRole('button', { name: 'Termékkönyvtár bezárása', exact: true }).click();
-  await expect(page.locator('.din-row')).toHaveCount(2);
+  await expect(page.locator('.board-row-control')).toHaveCount(2);
   await expect(page.locator('.board-accessories')).toContainText('R9XFH112');
   await page.getByLabel('Mennyiség (db)', { exact: true }).fill('3');
   await expect.poll(async () => (await readDocument(page)).data.devices.find(device => device.product?.reference === 'R9XFH112')?.quantity).toBe(3);
@@ -147,7 +148,7 @@ test('searches and filters the complete offline catalogue, paginates and transla
   await expect(page.locator('.manufacturer-library-button')).toBeFocused();
   await page.getByLabel('Nyelv / Language', { exact: true }).selectOption('en');
   await page.locator('.view-tabs').getByRole('button', { name: 'Distribution board', exact: true }).click();
-  await page.getByRole('button', { name: /Manufacturer product library/ }).click();
+  await page.getByRole('button', { name: 'Manufacturer product library', exact: true }).click();
   const english = page.getByRole('dialog', { name: 'Manufacturer product library', exact: true });
   await expect(english.getByRole('status')).toHaveText(`${catalogCount} products`);
   await expect(english.getByRole('searchbox')).toHaveAttribute('placeholder', 'Reference, name or technical specification…');
@@ -230,7 +231,8 @@ test('shows illustrative Schneider photos in the catalogue and the exported boar
   const device = (await readDocument(page)).data.devices.find(item => item.product?.reference === 'EZ9F57116')!;
   await dialog.getByRole('button', { name: 'Termékkönyvtár bezárása' }).click();
   await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
-  if (await page.locator(`[data-device-id="${device.id}"] image`).count() === 0) {
+  const board = (await readDocument(page)).data.boards.find(item => item.id === device.boardId)!;
+  if (!board.rows.some(row => row.placements.some(placement => placement.deviceId === device.id))) {
     await page.getByRole('button', { name: 'Új DIN-sor' }).click();
     await page.getByRole('combobox', { name: '2. sor: készülék elhelyezése' }).selectOption(device.id);
   }

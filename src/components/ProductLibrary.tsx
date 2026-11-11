@@ -14,10 +14,11 @@ const categoryLabels: Record<CatalogProduct['category'], string> = {
   mcb: 'Kismegszakító', rccb: 'FI-relé', rcbo: 'Kombinált védelem',
   spd: 'Túlfeszültség-védelem', switch: 'Főkapcsoló', control: 'Vezérlés',
   terminal: 'Főáramköri leágazó', accessory: 'Tartozék', enclosure: 'Elosztószekrény',
+  'floor-switch': 'Kapcsoló', 'floor-outlet': 'Dugalj', 'floor-data': 'Adat- és multimédiás csatlakozó', 'floor-accessory': 'Szerelvény tartozék',
 };
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const number = (value: number) => value.toLocaleString(getLocale());
-const actionLabel = (product: CatalogProduct) => product.mounting === 'enclosure' ? 'Elosztó létrehozása' : product.mounting === 'accessory' ? 'Tartozék hozzáadása' : 'Hozzáadás az elosztóhoz';
+const actionLabel = (product: CatalogProduct) => product.mounting === 'floor' ? 'Elhelyezés az alaprajzon' : product.mounting === 'enclosure' ? 'Elosztó létrehozása' : product.mounting === 'accessory' ? 'Tartozék hozzáadása' : 'Hozzáadás az elosztóhoz';
 
 function officialSource(source: string): string | undefined {
   try {
@@ -59,7 +60,9 @@ function ProductCard({ product, onAdd, language }: { product: CatalogProduct; on
       {source && <a href={source} target="_blank" rel="noopener noreferrer">{t('Hivatalos gyártói forrás')}<ArrowUpRight size={13} aria-hidden="true"/></a>}
       {supplementarySource && <a href={supplementarySource} target="_blank" rel="noopener noreferrer">{t('Kiegészítő gyártói adatlap')}<ArrowUpRight size={13} aria-hidden="true"/></a>}
     </div>
-    <button type="button" className="primary product-add" onClick={() => onAdd(product)} aria-label={`${t(actionLabel(product))}: ${product.reference}`}><Plus size={15} aria-hidden="true"/>{t(actionLabel(product))}</button>
+    {product.category === 'floor-accessory'
+      ? <small>{t('Önállóan nem helyezhető el az alaprajzon.')}</small>
+      : <button type="button" className="primary product-add" onClick={() => onAdd(product)} aria-label={`${t(actionLabel(product))}: ${product.reference}`}><Plus size={15} aria-hidden="true"/>{t(actionLabel(product))}</button>}
   </article>;
 }
 

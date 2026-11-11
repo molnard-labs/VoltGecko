@@ -1,13 +1,14 @@
-import type { DeviceElectrical, DeviceKind } from '../types';
+import type { DeviceElectrical, DeviceKind, DeviceVariant } from '../types';
 
 /** Manufacturer facts bundled for offline use; project devices receive a snapshot. */
 export interface CatalogProduct {
   reference: string;
   manufacturer: string;
   range: string;
-  category: 'mcb'|'rccb'|'rcbo'|'spd'|'switch'|'control'|'terminal'|'accessory'|'enclosure';
+  category: 'mcb'|'rccb'|'rcbo'|'spd'|'switch'|'control'|'terminal'|'accessory'|'enclosure'|'floor-switch'|'floor-outlet'|'floor-data'|'floor-accessory';
   kind: DeviceKind;
-  mounting: 'din'|'accessory'|'enclosure';
+  variant?: DeviceVariant;
+  mounting: 'din'|'accessory'|'enclosure'|'floor';
   name: { hu:string; en:string };
   description: { hu:string; en:string };
   image?:string;

@@ -289,7 +289,7 @@ function productSnapshot(value: unknown) {
     fail('a forrás oldalszáma pozitív egész szám legyen.');
   timestamp(value.verifiedAt, 'Ellenőrzés időpontja');
   text(value.mounting, 'Szerelési mód', 100);
-  if (!['din', 'accessory', 'enclosure'].includes(value.mounting)) fail('ismeretlen termékszerelési mód.');
+  if (!['din', 'accessory', 'enclosure', 'floor'].includes(value.mounting)) fail('ismeretlen termékszerelési mód.');
   if (value.description !== undefined) {
     object(value.description, 'Termékleírás');
     text(value.description.hu, 'Magyar termékleírás', 20_000);

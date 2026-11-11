@@ -30,7 +30,7 @@ import { StartScreen, NewProjectForm } from './components/StartScreen';
 import { LinkedFileControl, type LinkedFileActions } from './components/LinkedFileControl';
 import { projectFilePicker } from './services/linkedFile';
 import { downloadBlob, safeFilename } from './services/files';
-import { addProductToProject } from './products/factory';
+import { addFloorProductToProject, addProductToProject } from './products/factory';
 import type { CatalogProduct } from './products/types';
 import { useProjectDocument } from './app/useProjectDocument';
 import { useFocusTrap } from './app/useFocusTrap';
@@ -77,6 +77,7 @@ export default function App() {
   const [boardContextHost, setBoardContextHost] = useState<HTMLDivElement | null>(null);
   const [tool, setTool] = useState<Tool>('select');
   const [catalogEntry, setCatalogEntry] = useState<CatalogEntry>();
+  const [floorProduct, setFloorProduct] = useState<CatalogProduct>();
   const [modal, setModal] = useState<Modal>(null);
   const [sidebar, setSidebar] = useState(false);
   const [busy, setBusy] = useState('');
@@ -125,6 +126,7 @@ export default function App() {
     setBoardId(next.data.boards[0]?.id ?? '');
     setSelectedId(null);
     setTool('select');
+    setFloorProduct(undefined);
     setModal(null);
     setSidebar(false);
   };
@@ -192,6 +194,7 @@ export default function App() {
         setProductLibraryOpen(false);
         setSidebar(false);
         setTool('select');
+        setFloorProduct(undefined);
       }
     };
     window.addEventListener('keydown', listener);
@@ -271,6 +274,7 @@ export default function App() {
       setSheetId(firstSheetId ?? sheetId);
       setSelectedId(null);
       setTool('select');
+      setFloorProduct(undefined);
       setView('floor');
       notify(t('{p0} tervlap hozzáadva.', { p0: results.length }));
     });
@@ -278,6 +282,19 @@ export default function App() {
   const addManufacturerProduct = (product: CatalogProduct) => {
     const current = docRef.current;
     if (!current) return;
+    if (product.mounting === 'floor') {
+      if (product.category === 'floor-accessory') return;
+      setCatalogEntry(undefined);
+      setFloorProduct(product);
+      setProductLibraryOpen(false);
+      setSelectedId(null);
+      setView('floor');
+      setTool(product.kind);
+      setSidebar(false);
+      notify(t('Érintsd meg az eszköz helyét az alaprajzon.'));
+      return;
+    }
+    setFloorProduct(undefined);
     try {
       const result = addProductToProject(current.data, product, boardId);
       changeData(result.data);
@@ -297,6 +314,16 @@ export default function App() {
   };
   const addDevice = (kind: DeviceKind, targetSheetId: string, point: Point) => {
     if (!doc) return;
+    if (floorProduct?.kind === kind) {
+      try {
+        const result = addFloorProductToProject(doc.data, floorProduct, targetSheetId, point);
+        changeData(result.data);
+        setSelectedId(result.selectedId);
+        setFloorProduct(undefined);
+        setTool('select');
+      } catch (error) { notify(errorMessage(error)); }
+      return;
+    }
     const next = structuredClone(doc.data);
     const d = makeDevice(kind, next.devices, catalogEntry?.kind === kind ? catalogEntry.variant : undefined);
     next.devices.push(d);
@@ -308,6 +335,7 @@ export default function App() {
   };
   const chooseCatalog = (entry: CatalogEntry) => {
     if (!doc) return;
+    setFloorProduct(undefined);
     const { kind, variant } = entry;
     setCatalogEntry(entry);
     if (view !== 'board') {
@@ -379,6 +407,8 @@ export default function App() {
   };
   const locate = (id: string) => {
     if (!doc) return;
+    setFloorProduct(undefined);
+    setTool('select');
     const s = doc.data.sheets.find((s) => s.placements.some((p) => p.deviceId === id));
     if (s) {
       setSheetId(s.id);
@@ -453,7 +483,7 @@ export default function App() {
             document={doc}
             view={view}
             tool={tool}
-            selectedCatalogId={catalogEntry ? catalogEntryId(catalogEntry) : undefined}
+            selectedCatalogId={floorProduct ? `manufacturer:${floorProduct.reference}` : catalogEntry ? catalogEntryId(catalogEntry) : undefined}
             selectedId={selectedId}
             onClose={() => setSidebar(false)}
             onHome={() => { setSidebar(false); void perform(t('Mentés és kezdőképernyő…'), showStart); }}
@@ -505,6 +535,7 @@ export default function App() {
                       onClick={() => {
                         setView(n.id);
                         setTool('select');
+                        setFloorProduct(undefined);
                       }}
                     >
                       <n.icon size={16} />
@@ -678,7 +709,7 @@ export default function App() {
                       onOpenBoard={(id) => { setBoardId(id); setSelectedId(null); setView('board'); }}
                       selectionHost={floorContextHost}
                       onBoardPlaced={() => setTool('select')}
-                      deviceToolLabel={catalogEntry?.label}
+                      deviceToolLabel={floorProduct?.name[language] ?? catalogEntry?.label}
                       onNotify={notify}
                       onUploadBackground={() => backgroundInput.current?.click()}
                       onDropBackground={(files) => addBackground(files, sheet.id)}
@@ -701,6 +732,7 @@ export default function App() {
                               className={tool === drawingTool.id ? 'active' : ''}
                               aria-pressed={tool === drawingTool.id}
                               onClick={() => {
+                                setFloorProduct(undefined);
                                 setTool(drawingTool.id as Tool);
                                 if (drawingTool.id !== 'select') setSelectedId(null);
                                 if (drawingTool.id === 'route' || drawingTool.id === 'control')

@@ -4,7 +4,7 @@ import { decodeProject, encodeProject, validateProject } from '../data/archive';
 import { checkpoint, createProject, restoreRevision } from '../data/project';
 import { getBoardIssues } from '../data/boardPlacement';
 import { setLanguage } from '../i18n';
-import { addProductToProject, createDeviceFromProduct } from './factory';
+import { addFloorProductToProject, addProductToProject, createDeviceFromProduct } from './factory';
 import type { CatalogProduct } from './types';
 
 // Deliberately fictional references: these tests exercise behavior, not manufacturer facts.
@@ -135,6 +135,32 @@ describe('adding catalog products to distribution boards', () => {
 });
 
 describe('catalog project archive compatibility', () => {
+  it('places a manufacturer floor product with its actual variant and preserves it in project files and history', async () => {
+    let document = createProject();
+    const before = structuredClone(document.data);
+    const product = fixture({
+      reference: 'TEST-TWO-WAY', category: 'floor-switch', mounting: 'floor', kind: 'switch',
+      variant: 'switch-two-way', moduleWidth: undefined,
+    });
+    const sheetId = document.data.sheets[0].id;
+    const result = addFloorProductToProject(document.data, product, sheetId, { x: 120, y: 200 });
+    expect(document.data).toEqual(before);
+    const device = result.data.devices.find(item => item.id === result.selectedId)!;
+    expect(device.variant).toBe('switch-two-way');
+    expect(device.product?.reference).toBe('TEST-TWO-WAY');
+    expect(device.product?.mounting).toBe('floor');
+    expect(device.boardId).toBeUndefined();
+    expect(device.moduleWidth).toBeUndefined();
+    expect(result.data.sheets[0].placements).toContainEqual({ deviceId: device.id, x: 120, y: 200, rotation: 0 });
+    expect(() => addProductToProject(document.data, product)).toThrow();
+    expect(() => addFloorProductToProject(document.data, { ...product, category: 'floor-accessory' }, sheetId, { x: 0, y: 0 })).toThrow();
+    document.data = result.data;
+    document = checkpoint(document, 'Floor product');
+    const loaded = await decodeProject(await encodeProject(document));
+    expect(loaded).toEqual(document);
+    expect(restoreRevision(loaded, loaded.headRevisionId!).data.devices[0].variant).toBe('switch-two-way');
+  });
+
   it('round-trips full product, enclosure and accessory metadata through files and history', async () => {
     let document = createProject();
     document.data = addProductToProject(document.data, fixture({ mounting: 'enclosure', category: 'enclosure', boardRows: 2, modulesPerRow: 18 })).data;
