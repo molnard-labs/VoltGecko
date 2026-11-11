@@ -58,12 +58,29 @@ test('edits circuit conductors and section without changing older cable details 
     return { cable: circuit.cable, cableDetails: circuit.cableDetails, phase: circuit.phase, loadType: circuit.loadType, conductors: circuit.conductors };
   }).toEqual({ cable: 'H07V-U 3 × 2,5 mm²', cableDetails: { cores: 3, crossSectionMm2: 4, material: 'Cu', lengthM: 9 }, phase: 'L', loadType: 'lamp', conductors: ['L', 'N'] });
 
+  // Cards grow to their full height; only the workspace scrolls vertically.
+  // This preserves one vertical scroll surface while the strip itself can
+  // still be scrolled horizontally when a circuit is off-screen.
+  const editor = page.locator('.editor-area');
+  await expect(page.getByText('KÖZÖS PROJEKTADATOK', {exact: true})).toHaveCount(0);
+  await expect(page.getByText('Az alaprajz és az elosztó közötti kapcsolat.', {exact: true})).toHaveCount(0);
+  await expect.poll(() => cards.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  await expect.poll(() => editor.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect.poll(() => page.locator('.workspace').evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  await editor.evaluate(el => { el.scrollTop = 0; });
+  await page.screenshot({ path: 'tmp/circuit-ui-desktop.png' });
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.locator('.sidebar').evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
   await expect.poll(() => cards.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+  await expect.poll(() => cards.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  await expect.poll(() => page.locator('.workspace').evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: 'tmp/circuit-ui-mobile.png' });
-  await cards.evaluate(el => { el.scrollTop = 260; });
+  await editor.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect.poll(() => editor.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await cards.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  await expect.poll(() => cards.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
   await page.screenshot({ path: 'tmp/circuit-ui-mobile-fields.png' });
   await page.getByRole('button', { name: 'Új áramkör', exact: true }).click();
   const lastName = cards.locator('.circuit-card').last().locator('[data-circuit-name]');

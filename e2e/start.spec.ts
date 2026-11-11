@@ -19,7 +19,7 @@ async function createNamedProject(page: Page, name: string) {
   await page.getByLabel('Projekt neve', { exact: true }).fill(name);
   await page.getByRole('button', { name: 'Projekt létrehozása', exact: true }).click();
   await expect(page.getByText('Ezen az eszközön mentve', { exact: true })).toBeVisible();
-  await expect(page.locator('.project-title')).toHaveText(name);
+  await expect(page.locator('.project-switch strong')).toHaveText(name);
 }
 
 test('starts empty and only creates a sample after an explicit choice', async ({ page }) => {
@@ -91,7 +91,7 @@ test('imports a project from the welcome screen and reports invalid files there'
   const nextChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Projektfájl kiválasztása', exact: true }).click();
   await (await nextChooser).setFiles(file);
-  await expect(page.locator('.project-title')).toContainText('Hordozható terv');
+  await expect(page.locator('.project-switch strong')).toContainText('Hordozható terv');
   await expect(page.getByText('Ezen az eszközön mentve', { exact: true })).toBeVisible();
   expect((await storedProjects(page)).length).toBeGreaterThanOrEqual(1);
 });

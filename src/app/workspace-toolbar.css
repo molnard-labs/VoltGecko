@@ -1,6 +1,41 @@
 .workspace-toolbar { position:sticky; top:0; z-index:12; }
 .workspace-toolbar>.floor-context-host { flex:1 1 100%; height:44px; min-height:44px; min-width:0; overflow:hidden; }
 .workspace-toolbar>.board-context-row { flex:1 1 100%; min-height:44px; min-width:0; display:flex; align-items:center; gap:8px; }
+
+/* The views and their primary actions live in the same header.  The workspace
+   owns its scrolling, so the header and contextual row stay above it without
+   overlaying one another. */
+.workspace .workspace-header { display:flex; flex-wrap:nowrap; min-height:60px; height:auto; gap:12px; padding:7px 16px; }
+.workspace-header .workspace-navigation { flex:1 1 auto; min-width:0; display:flex; justify-content:center; }
+.workspace-header .view-tabs { flex:0 1 auto; min-width:0; min-height:44px; height:44px; max-width:100%; }
+.workspace-header .toolbar-right { flex:0 0 auto; margin-left:0; flex-wrap:nowrap; }
+.workspace-header .header-actions { flex:0 0 auto; }
+.workspace .workspace-toolbar { height:auto; min-height:0; padding:0 16px; }
+
+/* The workspace shares the window with the sidebar and inspector. Preserve
+   space for all view labels before falling back to a scrollable tab strip. */
+@media(min-width:761px) and (max-width:1700px) {
+  .workspace-header .view-tabs { gap:10px; }
+  .workspace-header .view-tabs>button>svg { display:none; }
+  .workspace-header .save-version-button span,
+  .workspace-header .export-dropdown>.primary>span,
+  .workspace-header .export-dropdown>.primary>svg:last-child { display:none; }
+  .workspace-header .save-version-button,
+  .workspace-header .export-dropdown>.primary { width:44px; min-width:44px; min-height:44px; justify-content:center; padding:0; }
+}
+
+@media(max-width:760px) {
+  .workspace .workspace-header { display:grid; grid-template-columns:40px minmax(0,1fr) auto; grid-template-areas:'menu nav actions' 'context context context'; min-height:0; gap:0 5px; padding:6px 10px; }
+  .workspace-header .workspace-sidebar-toggle { grid-area:menu; }
+  .workspace-header .workspace-navigation { grid-area:nav; justify-content:flex-start; }
+  .workspace-header .view-tabs { justify-content:flex-start; }
+  .workspace-header .toolbar-right { grid-area:context; justify-content:flex-end; min-height:44px; }
+  .workspace-header .toolbar-right:empty { display:none; }
+  .workspace-header .header-actions { grid-area:actions; }
+  .workspace-header .save-version-button { display:none; }
+  .workspace-header .header-actions .primary>span,
+  .workspace-header .header-actions .primary>svg:last-child { display:none; }
+}
 .board-context-host { flex:1; min-width:0; display:flex; align-items:center; gap:8px; }
 .board-circuit-menu { position:relative; flex-shrink:0; }
 .board-circuit-menu summary { cursor:pointer; padding:8px 10px; list-style:none; border:1px solid var(--line); border-radius:6px; }

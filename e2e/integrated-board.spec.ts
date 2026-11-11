@@ -36,7 +36,7 @@ test('preserves and downloads temporary editor drawings without replacing the sh
   await reopenRecentProject(page);
   await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
   await expect(page.getByText('A korábbi önálló rajz külön megmaradt', { exact: false })).toBeHidden();
-  await page.locator('.workspace-toolbar').getByText('Korábbi rajzok', { exact:true }).click();
+  await page.locator('.workspace-header').getByText('Korábbi rajzok', { exact:true }).click();
   await expect(page.getByText('A korábbi önálló rajz külön megmaradt', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Korábbi elosztónézet' })).toHaveCount(0);
   await expect(page.locator('iframe[title="Elosztótervező"]')).toHaveCount(0);

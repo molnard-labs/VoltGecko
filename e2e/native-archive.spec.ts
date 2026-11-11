@@ -81,7 +81,7 @@ async function openNativeProject(page:Page,document=fixture()) {
   const selecting=page.waitForEvent('filechooser');
   await page.getByRole('button',{name:'Projektfájl kiválasztása',exact:true}).click();
   await (await selecting).setFiles({name:'native-terminal-plan.vgecko',mimeType:'application/zip',buffer:Buffer.from(await (await encodeProject(document)).arrayBuffer())});
-  await expect(page.locator('.project-title')).toHaveText(document.data.name);
+  await expect(page.locator('.project-switch strong')).toHaveText(document.data.name);
   await expect(page.locator('.busy-overlay')).toHaveCount(0);
   await page.locator('.view-tabs').getByRole('button',{name:'Elosztó',exact:true}).click();
 }
@@ -113,7 +113,7 @@ test('opens a native archive and retains every terminal wire in all-board SVG, P
   await expect(page.locator('.photo-grid img')).toHaveCount(2);
   await expect.poll(async()=>Object.keys((await readDocument(page)).assets).length).toBe(3);
   await page.getByRole('button',{name:'Kijelölés bezárása',exact:true}).click();
-  await page.locator('.main-nav').getByRole('button',{name:/Előzmények/}).click();
+  await page.locator('.view-tabs').getByRole('button',{name:/Előzmények/}).click();
   await page.getByLabel('Verzió megjegyzése',{exact:true}).fill('QA: native terminal wiring and photo');
   await page.locator('.revision-compose').getByRole('button',{name:'Verzió mentése',exact:true}).click();
   await expect.poll(async()=>(await readDocument(page)).revisions.at(-1)?.note).toBe('QA: native terminal wiring and photo');
@@ -169,7 +169,7 @@ test('opens a native archive and retains every terminal wire in all-board SVG, P
   await page.getByLabel('Eszköz megjegyzése',{exact:true}).fill('Keep this local edit after archive import.');
   await expect.poll(async()=>(await readDocument(page)).data.devices.find(device=>device.id===neutral.id)?.notes).toBe('Keep this local edit after archive import.');
   await page.locator('input[accept*=".vgecko"]').setInputFiles(archive.destination);
-  await expect(page.locator('.project-title')).toContainText('importált másolat');
+  await expect(page.locator('.project-switch strong')).toContainText('importált másolat');
   const restored=await readDocument(page);expect(restored.data.id).not.toBe(exported.data.id);
   expect(restored.data.boards).toEqual(exported.data.boards);expect(restored.data.devices).toEqual(exported.data.devices);
   expect(restored.data.circuits).toEqual(exported.data.circuits);expect(restored.assets).toEqual(exported.assets);

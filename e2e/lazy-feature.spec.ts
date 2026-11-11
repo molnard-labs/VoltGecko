@@ -31,7 +31,7 @@ test('a failed optional view leaves the floor plan and project export usable', a
   await expect(failure).toContainText('A nézet nem tölthető be. A folytatáshoz töltsd újra az oldalt.');
   await expect(failure.getByRole('button', { name: 'Újratöltés', exact: true })).toBeVisible();
   await expect(page.locator('.app-shell')).toBeVisible();
-  await expect(page.locator('.project-title')).toHaveText('Dunaparti lakás');
+  await expect(page.locator('.project-switch strong')).toHaveText('Dunaparti lakás');
 
   await page.locator('.view-tabs').getByRole('button', { name: 'Alaprajz', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);

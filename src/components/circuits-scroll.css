@@ -8,11 +8,9 @@
   align-items: stretch;
   gap: 18px;
   max-width: 100%;
-  /* The horizontal scrollbar stays reachable even when a card contains a
-     long device list; its content can be scrolled vertically in the strip. */
-  max-height: calc(100dvh - 250px);
+  /* The cards take their full height; vertical scrolling belongs to the page. */
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   padding: 0 2px 16px;
   scrollbar-width: auto;
@@ -31,7 +29,3 @@
 .circuit-conductor-hint { margin: 8px 0 0; color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4; }
 .circuit-conductor-hint p { margin: 0 0 6px; }
 .circuit-conductor-hint button { font-size: 0.8rem; }
-@media (max-width: 768px) {
-  /* Mobile's taller toolbar leaves less room below the section heading. */
-  .circuits-view .circuit-cards { max-height: max(14rem, calc(100dvh - 550px)); }
-}

@@ -12,7 +12,6 @@ import {
   PencilRuler,
   Plus,
   Settings2,
-  SlidersHorizontal,
   Type,
   WifiOff,
   X,
@@ -456,12 +455,9 @@ export default function App() {
             tool={tool}
             selectedCatalogId={catalogEntry ? catalogEntryId(catalogEntry) : undefined}
             selectedId={selectedId}
-            onViewChange={(view) => {
-              setView(view);
-              setTool('select');
-              setSidebar(false);
-            }}
             onClose={() => setSidebar(false)}
+            onHome={() => { setSidebar(false); void perform(t('Mentés és kezdőképernyő…'), showStart); }}
+            onOpenSettings={() => { setSidebar(false); setModal('settings'); }}
             onProjectsOpen={() => {
               setModal('projects');
               void perform(t('Projekt megnyitása…'), refreshProjects);
@@ -484,12 +480,9 @@ export default function App() {
           )}
           <main className="workspace">
             <WorkspaceHeader
-              projectName={data.name}
               canUndo={canUndo}
               canRedo={canRedo}
               onOpenSidebar={() => setSidebar(true)}
-              onOpenSettings={() => setModal('settings')}
-              onHome={() => void perform(t('Mentés és kezdőképernyő…'), showStart)}
               onUndo={goUndo}
               onRedo={goRedo}
               onSaveVersion={() => saveVersion()}
@@ -501,30 +494,13 @@ export default function App() {
               }
               onOpenDrive={openDrive}
               onOpenFiles={() => setModal('files')}
-            />
-            {updateAvailable && (
-              <div className="update-banner">
-                <span>{t('Új alkalmazásverzió érhető el.')}</span>
-                <button
-                  onClick={() =>
-                    void perform(t('Mentés és frissítés…'), async () => {
-                      await saveProject(doc);
-                      await updateFn.current?.();
-                    })
-                  }
-                >
-                  {t('Mentés és frissítés')}
-                </button>
-              </div>
-            )}
-            <LinkedFileControl key={doc.data.id} ref={linkedFileActions} document={doc} onNotify={notify} />
-            <div className="workspace-toolbar">
-              <div className="view-tabs">
-                {nav
-                  .filter((n) => n.id !== 'history')
-                  .map((n) => (
+              activeView={view}
+              navigation={(
+              <nav className="view-tabs" aria-label={t('MUNKANÉZETEK')}>
+                {nav.map((n) => (
                     <button
                       className={view === n.id ? 'active' : ''}
+                      aria-current={view === n.id ? 'page' : undefined}
                       key={n.id}
                       onClick={() => {
                         setView(n.id);
@@ -535,7 +511,9 @@ export default function App() {
                       {n.label}
                     </button>
                   ))}
-              </div>
+              </nav>
+              )}
+              contextActions={(
               <div className="toolbar-right">
                 {view === 'circuits' && (
                   <button className="primary circuits-add" onClick={() => {
@@ -571,7 +549,7 @@ export default function App() {
                 </details>}
                 {view === 'floor' && (
                   <>
-                    <button className="quiet" onClick={() => backgroundInput.current?.click()}>
+                    <button className="quiet" aria-label={t('Alaprajz betöltése')} title={t('Alaprajz betöltése')} onClick={() => backgroundInput.current?.click()}>
                       <FileImage size={16} />
                       <span>{t('Alaprajz betöltése')}</span>
                     </button>
@@ -605,20 +583,32 @@ export default function App() {
                     </button>
                   </>
                 )}
+              </div>
+              )}
+            />
+            {updateAvailable && (
+              <div className="update-banner">
+                <span>{t('Új alkalmazásverzió érhető el.')}</span>
                 <button
-                  className="icon-button"
-                  aria-label={t('Projektbeállítások')}
-                  onClick={() => setModal('settings')}
+                  onClick={() =>
+                    void perform(t('Mentés és frissítés…'), async () => {
+                      await saveProject(doc);
+                      await updateFn.current?.();
+                    })
+                  }
                 >
-                  <SlidersHorizontal size={17} />
+                  {t('Mentés és frissítés')}
                 </button>
               </div>
+            )}
+            <LinkedFileControl key={doc.data.id} ref={linkedFileActions} document={doc} onNotify={notify} />
+            {(view === 'floor' || view === 'board') && <div className="workspace-toolbar">
               {view === 'floor' && <div className="floor-context-host" ref={setFloorContextHost}/>}
               {view === 'board' && <div className="board-context-row">
                 <BoardCircuitMenu data={data} boardId={data.boards.find(board => board.id === boardId)?.id ?? data.boards[0]?.id ?? ''} onChange={changeData} onOpenCircuits={() => setView('circuits')}/>
                 <div className="board-context-host" ref={setBoardContextHost}/>
               </div>}
-            </div>
+            </div>}
             {view === 'floor' && (
               <div className="plan-heading">
                 <div>

@@ -5,7 +5,7 @@ async function exerciseToolbar(page: Page) {
   await page.goto('/');
   await chooseSample(page);
   await page.locator('.view-tabs').getByRole('button', { name:'Áramkörök', exact:true }).click();
-  const toolbar = page.locator('.workspace-toolbar');
+  const toolbar = page.locator('.workspace-header');
   const add = page.getByRole('button', { name:'Új áramkör', exact:true });
   await expect(add).toHaveCount(1);
   // Create enough real cards that the page must scroll, then return to the top.
@@ -20,7 +20,7 @@ async function exerciseToolbar(page: Page) {
   await expect(add).toBeInViewport();
   const geometry = await page.evaluate(() => {
     const workspace = document.querySelector('.workspace')!, editor = document.querySelector('.editor-area')!;
-    const bar = document.querySelector('.workspace-toolbar')!;
+    const bar = document.querySelector('.workspace-header')!;
     return {workspaceTop: workspace.getBoundingClientRect().top, barTop: bar.getBoundingClientRect().top,
       editorScroll: editor.scrollTop, workspaceScroll: workspace.scrollTop};
   });

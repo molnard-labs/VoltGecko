@@ -30,7 +30,7 @@ async function openPlanner(page: Page, url = '/') {
   await page.addInitScript(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }));
   await page.goto(url);
   await chooseSample(page);
-  await expect(page.locator('.project-title')).toHaveText(/Dunaparti lakás/);
+  await expect(page.locator('.project-switch strong')).toHaveText(/Dunaparti lakás/);
   await expect(page.getByText('Ezen az eszközön mentve', { exact: true })).toBeVisible();
 }
 
@@ -164,7 +164,7 @@ test('restores connection and load fields in a new version and preserves an edit
   test.setTimeout(90_000);
   await openPlanner(page);
   const configured = await configureGraph(page);
-  await page.locator('.main-nav').getByRole('button', { name: /Előzmények/ }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: /Előzmények/ }).click();
   await page.getByLabel('Verzió megjegyzése', { exact: true }).fill('QA: kapcsolatok és fogyasztó');
   await page.locator('.revision-compose').getByRole('button', { name: 'Verzió mentése', exact: true }).click();
   await expect.poll(async () => (await readDocument(page)).revisions.at(-1)?.note).toBe('QA: kapcsolatok és fogyasztó');
@@ -175,7 +175,7 @@ test('restores connection and load fields in a new version and preserves an edit
   await page.locator('.wiring-wire-list button').last().click();
   await page.getByRole('button', { name: 'Vezeték törlése', exact: true }).click();
   await expect.poll(async () => (await readDocument(page)).data.boards[0].wiring?.wires.length).toBe(2);
-  await page.locator('.main-nav').getByRole('button', { name: /Előzmények/ }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: /Előzmények/ }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.locator('.timeline article').filter({ has: page.getByRole('heading', { name: 'QA: kapcsolatok és fogyasztó', exact: true }) }).getByRole('button', { name: 'Visszaállítás', exact: true }).click();
   await expect.poll(async () => (await readDocument(page)).revisions.at(-1)?.restoredFrom).toBe(revisionId);
@@ -188,7 +188,7 @@ test('restores connection and load fields in a new version and preserves an edit
   await page.getByLabel('ÁK1 kábele', { exact: true }).fill('Megőrzendő helyi módosítás');
   await expect.poll(async () => (await readDocument(page)).data.circuits[0].cable).toBe('Megőrzendő helyi módosítás');
   await page.locator('input[accept*=".vgecko"]').setInputFiles(archive);
-  await expect(page.locator('.project-title')).toContainText('importált másolat');
+  await expect(page.locator('.project-switch strong')).toContainText('importált másolat');
   const imported = await readDocument(page);
   expect(imported.data.id).not.toBe(exported.data.id);
   expect(imported.data.boards).toEqual(exported.data.boards);

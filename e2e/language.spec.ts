@@ -64,10 +64,10 @@ test('switches all existing workspace views and details between Hungarian and En
   await expect(page.locator('.catalog-grid').getByRole('button', { name: /^RCBO/ })).toBeVisible();
 
   await page.locator('.view-tabs').getByRole('button', { name: 'Circuits', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Circuits', exact: true })).toBeVisible();
+  await expect(page.locator('.view-tabs').getByRole('button', { name: 'Circuits', exact: true })).toHaveClass(/active/);
   await expect(page.getByLabel(`${initial.data.circuits[0].code} name`, { exact: true })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: `${initial.data.circuits[0].code} protection`, exact: true })).toBeVisible();
-  await page.locator('.main-nav').getByRole('button', { name: /^History/ }).click();
+  await expect(page.locator('.circuit-cards article').first()).toContainText('Protective device');
+  await page.locator('.view-tabs').getByRole('button', { name: /^History/ }).click();
   await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible();
   await expect(page.getByLabel('Version notes', { exact: true })).toHaveAttribute('placeholder', 'What changed? E.g. kitchen socket positions updated');
 
@@ -127,14 +127,13 @@ test('creates English device defaults, preserves existing names and remembers th
 test('keeps the language selector and English interface usable at a 390px phone width', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPlanner(page);
+  await page.getByRole('button', { name: 'Eszköztár megnyitása', exact: true }).click();
   await expect(languageControl(page)).toBeVisible();
   await languageControl(page).selectOption('en');
+  await expect.poll(async () => (await languageControl(page).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
   const bounds = await languageControl(page).boundingBox();
-  expect(bounds).not.toBeNull();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.getByRole('button', { name: 'Open device library', exact: true }).click();
   await expect(page.locator('.catalog-grid').getByRole('button', { name: 'Socket outlet', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Guide and privacy', exact: true })).toBeVisible();
   await page.locator('.sidebar').getByRole('button', { name: 'Close device library', exact: true }).click();
@@ -142,11 +141,12 @@ test('keeps the language selector and English interface usable at a 390px phone 
   await expect(page.getByLabel('Active distribution board', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.locator('.view-tabs').getByRole('button', { name: 'Circuits', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Circuits', exact: true })).toBeVisible();
+  await expect(page.locator('.view-tabs').getByRole('button', { name: 'Circuits', exact: true })).toHaveClass(/active/);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: path.join(qaDir, 'language-mobile-en.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Open device library', exact: true }).click();
   await languageControl(page).selectOption('hu');
-  await expect(page.getByRole('heading', { name: 'Áramkörök', exact: true })).toBeVisible();
+  await expect(page.locator('.view-tabs').getByRole('button', { name: 'Áramkörök', exact: true })).toHaveClass(/active/);
 });
 
 test('reopens production in English offline and switches both languages with cached manifests', async ({ page, context }) => {

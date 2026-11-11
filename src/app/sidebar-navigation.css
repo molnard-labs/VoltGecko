@@ -1,0 +1,62 @@
+/* Project controls remain together, even in the mobile drawer. */
+.brand-home {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.brand-home:focus-visible, .sidebar-project-settings:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 3px;
+}
+.sidebar-project {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 0 14px 20px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.sidebar-project .project-switch {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.sidebar-project-settings {
+  flex: 0 0 44px;
+  align-self: center;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+.sidebar-project-settings:hover { background: var(--accent-subtle); color: var(--accent); }
+.sidebar-language {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.sidebar-language > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: .875rem;
+}
+.sidebar-language select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-color: var(--control-border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+}

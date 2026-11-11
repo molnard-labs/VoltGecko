@@ -149,7 +149,7 @@ test('cancels a pending picker when switching projects and never writes the prev
   await page.getByRole('button', { name: 'Új projekt', exact: true }).click();
   await page.getByLabel('Projekt neve', { exact: true }).fill('Másik projekt a fájlválasztás közben');
   await page.getByRole('button', { name: 'Projekt létrehozása', exact: true }).click();
-  await expect(page.locator('.project-title')).toHaveText('Másik projekt a fájlválasztás közben');
+  await expect(page.locator('.project-switch strong')).toHaveText('Másik projekt a fájlválasztás közben');
   expect((await readDocument(page)).data.id).not.toBe(previous.data.id);
   await page.evaluate(() => window.__linkedFileTest.releasePicker?.());
   await expect.poll(() => page.evaluate(() => window.__linkedFileTest.pickerReturned)).toBe(true);

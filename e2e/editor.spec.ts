@@ -177,7 +177,7 @@ test('saves a checkpoint, undoes and redoes an edit, then restores without losin
   await expect.poll(async () => (await readDocument(page)).data.devices.find(d => d.code === 'D1')?.name).toBe('Elmentett dugalj');
   await page.getByRole('button', { name: 'Újra', exact: true }).click();
   await expect.poll(async () => (await readDocument(page)).data.devices.find(d => d.code === 'D1')?.name).toBe('Ideiglenes módosítás');
-  await page.locator('.main-nav').getByRole('button', { name: /Előzmények/ }).click();
+  await page.locator('.view-tabs').getByRole('button', { name: /Előzmények/ }).click();
   const revision = page.locator('.timeline article').filter({ has: page.getByRole('heading', { name: 'Mentett változat', exact: true }) });
   await expect(revision).toHaveCount(1);
   page.once('dialog', dialog => dialog.accept());
@@ -206,7 +206,7 @@ test('exports a complete archive and imports an older state as a preserved separ
   await page.getByLabel('Eszköz neve', { exact: true }).fill('Újabb helyi változat');
   await expect.poll(async () => (await readDocument(page)).data.devices[0].name).toBe('Újabb helyi változat');
   await page.locator('input[accept*=".vgecko"]').setInputFiles(archivePath);
-  await expect(page.locator('.project-title')).toContainText('importált másolat');
+  await expect(page.locator('.project-switch strong')).toContainText('importált másolat');
   const imported = await readDocument(page);
   expect(imported.data.id).not.toBe(exported.data.id);
   expect(imported.data.devices).toEqual(exported.data.devices);

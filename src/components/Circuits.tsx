@@ -36,7 +36,6 @@ export function Circuits({ data, onChange, onSelect, newCircuitId, onNewCircuitF
   });
 
   return <div className="circuits-view">
-    <div className="section-heading"><div><span className="eyebrow">{t('KÖZÖS PROJEKTADATOK')}</span><h2>{t('Áramkörök')}</h2><p>{t('Az alaprajz és az elosztó közötti kapcsolat.')}</p></div></div>
     {!data.circuits.length && <div className="empty"><Zap size={36}/><h3>{t('Még nincs áramkör')}</h3><p>{t('Hozz létre egyet, majd rendelj hozzá eszközöket.')}</p></div>}
     <div className="circuit-cards" ref={cardsRef} role="region" aria-label={t('Áramkörök')} tabIndex={0}>
       {data.circuits.map(c => {

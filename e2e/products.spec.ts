@@ -98,7 +98,7 @@ test('creates a manufacturer enclosure, adds exact module widths and archives ac
   await page.getByLabel('Mennyiség (db)', { exact: true }).fill('7');
   await expect.poll(async () => (await readDocument(page)).data.devices.find(device => device.id === accessoryDevice.id)?.quantity).toBe(7);
   await page.locator('input[accept*=".vgecko"]').setInputFiles(archive);
-  await expect(page.locator('.project-title')).toContainText('importált másolat');
+  await expect(page.locator('.project-switch strong')).toContainText('importált másolat');
   const imported = await readDocument(page);
   expect(imported.data.id).not.toBe(document.data.id);
   expect(imported.data.devices).toEqual(document.data.devices);

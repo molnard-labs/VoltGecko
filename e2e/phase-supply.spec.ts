@@ -42,7 +42,7 @@ test('single-phase supply drives circuit and device choices and survives reload 
   await tab('Áramkörök');
   await circuitL.uncheck();
   await page.locator('input[accept*=".vgecko"]').setInputFiles(archive);
-  await expect(page.locator('.project-title')).toContainText('importált másolat');
+  await expect(page.locator('.project-switch strong')).toContainText('importált másolat');
   await tab('Áramkörök');
   await expect(circuitL).toBeChecked();
   await expect(circuitN).toBeChecked();

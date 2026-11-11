@@ -1,27 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpRight,
   ChevronDown,
-  ChevronRight,
   Cloud,
   FileText,
   FolderOpen,
-  Home,
   Menu,
   Redo2,
   Save,
-  Settings2,
   Undo2
 } from 'lucide-react';
-import { t, useLanguage, type Language } from '../i18n';
+import { t } from '../i18n';
 
 interface Props {
-  projectName: string;
+  navigation: ReactNode;
+  activeView: string;
+  contextActions: ReactNode;
   canUndo: boolean;
   canRedo: boolean;
   onOpenSidebar: () => void;
-  onOpenSettings: () => void;
-  onHome: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSaveVersion: () => void;
@@ -34,12 +31,12 @@ interface Props {
 }
 
 export function WorkspaceHeader({
-  projectName,
+  navigation,
+  activeView,
+  contextActions,
   canUndo,
   canRedo,
   onOpenSidebar,
-  onOpenSettings,
-  onHome,
   onUndo,
   onRedo,
   onSaveVersion,
@@ -50,8 +47,24 @@ export function WorkspaceHeader({
   onOpenDrive,
   onOpenFiles
 }: Props) {
-  const { language, setLanguage } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigationRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const container = navigationRef.current?.querySelector<HTMLElement>('.view-tabs');
+    if (!container) return;
+    const revealActiveView = () => {
+      const active = container.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!active) return;
+      const bounds = container.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      if (item.left < bounds.left) container.scrollLeft -= bounds.left - item.left;
+      else if (item.right > bounds.right) container.scrollLeft += item.right - bounds.right;
+    };
+    revealActiveView();
+    const observer = new ResizeObserver(revealActiveView);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [activeView]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMenuOpen(false);
@@ -65,44 +78,12 @@ export function WorkspaceHeader({
   };
   return (
     <header className="workspace-header">
-      <div className="workspace-title">
-        <button
-          className="mobile-only icon-button"
-          aria-label={t('Eszköztár megnyitása')}
-          onClick={() => runAction(onOpenSidebar)}
-        >
-          <Menu size={21} />
-        </button>
-        <span className="breadcrumb">
-          {t('PROJEKTEK')}
-          <ChevronRight size={12} />
-        </span>
-        <button className="project-title" onClick={() => runAction(onOpenSettings)}>
-          {projectName}
-          <Settings2 size={14} />
-        </button>
-        <span className="small-tag draft-tag">{t('TERV')}</span>
-      </div>
+      <button className="mobile-only icon-button workspace-sidebar-toggle" aria-label={t('Eszköztár megnyitása')} onClick={() => runAction(onOpenSidebar)}>
+        <Menu size={21} />
+      </button>
+      <div className="workspace-navigation" ref={navigationRef}>{navigation}</div>
+      {contextActions}
       <div className="header-actions">
-        <button
-          className="quiet workspace-home"
-          aria-label={t('Kezdőképernyő')}
-          title={t('Kezdőképernyő')}
-          onClick={() => runAction(onHome)}
-        >
-          <Home size={19} />
-          <span>{t('Kezdőképernyő')}</span>
-        </button>
-        <label className="language-switch" title={t('Felület nyelve')}>
-          <select
-            aria-label="Nyelv / Language"
-            value={language}
-            onChange={(event) => setLanguage(event.target.value as Language)}
-          >
-            <option value="hu">HU</option>
-            <option value="en">EN</option>
-          </select>
-        </label>
         <div className="undo-group">
           <button
             className="icon-button"
@@ -116,12 +97,12 @@ export function WorkspaceHeader({
             <Redo2 size={18} />
           </button>
         </div>
-        <button className="quiet save-version-button" onClick={() => runAction(onSaveVersion)}>
+        <button className="quiet save-version-button" aria-label={t('Verzió mentése')} title={t('Verzió mentése')} onClick={() => runAction(onSaveVersion)}>
           <Save size={16} />
           <span>{t('Verzió mentése')}</span>
         </button>
         <div className="export-dropdown">
-          <button className="primary" aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)}>
+          <button className="primary" aria-label={t('Mentés és export')} title={t('Mentés és export')} aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)}>
             <ArrowUpRight size={16} />
             <span>{t('Mentés és export')}</span>
             <ChevronDown size={14} />

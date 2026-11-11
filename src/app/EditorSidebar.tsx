@@ -1,15 +1,16 @@
 import { useState, type CSSProperties } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, CircleHelp, Search, X } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, CircleHelp, Languages, Search, Settings2, X } from 'lucide-react';
 import { APP } from '../config';
 import { CATALOG, catalogEntryId, deviceLabel } from '../catalog';
-import { getLocale, t } from '../i18n';
+import { getLocale, t, useLanguage, type Language } from '../i18n';
 import { AppearanceControls } from '../components/AppearanceControls';
 import { Brand } from '../components/Brand';
 import { DeviceSymbol } from '../components/Symbol';
 import { ReleaseInfo } from '../components/ReleaseInfo';
 import type { FloorPlanProps } from '../components/FloorPlan';
 import type { CatalogEntry, ProjectDocument } from '../types';
-import { getNavigation, type View } from './navigation';
+import type { View } from './navigation';
+import './sidebar-navigation.css';
 
 interface Props {
   document: ProjectDocument;
@@ -17,9 +18,10 @@ interface Props {
   tool: FloorPlanProps['tool'];
   selectedCatalogId?: string;
   selectedId: string | null;
-  onViewChange: (view: View) => void;
   onClose: () => void;
   onProjectsOpen: () => void;
+  onHome: () => void;
+  onOpenSettings: () => void;
   onProductsOpen: () => void;
   onHelpOpen: () => void;
   onChooseCatalog: (entry: CatalogEntry) => void;
@@ -32,9 +34,10 @@ export function EditorSidebar({
   tool,
   selectedCatalogId,
   selectedId,
-  onViewChange,
   onClose,
   onProjectsOpen,
+  onHome,
+  onOpenSettings,
   onProductsOpen,
   onHelpOpen,
   onChooseCatalog,
@@ -43,8 +46,8 @@ export function EditorSidebar({
   const [query, setQuery] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [openGroups, setOpenGroups] = useState(['switches', 'outlets', 'lights']);
+  const { language, setLanguage } = useLanguage();
   const { data } = doc;
-  const nav = getNavigation();
   const catalog = CATALOG.filter((entry) => entry.category === (view === 'board' ? 'board' : 'floor'));
   const catalogSearch = catalogQuery.trim().toLocaleLowerCase(getLocale());
   const catalogGroups = [
@@ -76,30 +79,26 @@ export function EditorSidebar({
   return (
     <aside className="sidebar">
       <div className="brand brand-voltgecko">
-        <Brand />
+        <button className="brand-home" aria-label={t('Kezdőképernyő')} title={t('Kezdőképernyő')} onClick={onHome}>
+          <Brand />
+        </button>
         <button className="mobile-only icon-button" aria-label={t('Eszköztár bezárása')} onClick={onClose}>
           <X size={18} />
         </button>
       </div>
-      <button className="project-switch" onClick={onProjectsOpen}>
-        <span className="project-avatar">{data.name.slice(0, 1).toUpperCase()}</span>
-        <span>
-          <strong>{data.name}</strong>
-          <small>{data.site || t('Saját projekt')}</small>
-        </span>
-        <ChevronDown size={15} />
-      </button>
-      <div className="nav-label">{t('MUNKANÉZETEK')}</div>
-      <nav className="main-nav">
-        {nav.map((n) => (
-          <button key={n.id} className={view === n.id ? 'active' : ''} onClick={() => onViewChange(n.id)}>
-            <n.icon size={18} />
-            {n.label}
-            {n.id === 'circuits' && <span>{data.circuits.length}</span>}
-            {n.id === 'history' && <span>{doc.revisions.length}</span>}
-          </button>
-        ))}
-      </nav>
+      <div className="sidebar-project">
+        <button className="project-switch" onClick={onProjectsOpen}>
+          <span className="project-avatar">{data.name.slice(0, 1).toUpperCase()}</span>
+          <span>
+            <strong>{data.name}</strong>
+            <small>{data.site || t('Saját projekt')}</small>
+          </span>
+          <ChevronDown size={15} />
+        </button>
+        <button className="sidebar-project-settings icon-button" aria-label={t('Projektbeállítások')} title={t('Projektbeállítások')} onClick={onOpenSettings}>
+          <Settings2 size={18} />
+        </button>
+      </div>
       <div className="sidebar-divider" />
       <button
         className="manufacturer-library-button"
@@ -196,6 +195,13 @@ export function EditorSidebar({
         </div>
       </div>
       <div className="sidebar-bottom">
+        <label className="sidebar-language" title={t('Felület nyelve')}>
+          <span><Languages size={18} /> {t('Felület nyelve')}</span>
+          <select aria-label="Nyelv / Language" value={language} onChange={event => setLanguage(event.target.value as Language)}>
+            <option value="hu">Magyar</option>
+            <option value="en">English</option>
+          </select>
+        </label>
         <AppearanceControls />
         <button onClick={onHelpOpen}>
           <CircleHelp size={17} />
