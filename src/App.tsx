@@ -49,6 +49,7 @@ import { getNavigation, type View } from './app/navigation';
 import { LazyFeature } from './app/LazyFeature';
 import './app/sheet-menu.css';
 import './app/workspace-toolbar.css';
+import { BoardCircuitMenu } from './components/BoardCircuitMenu';
 type Modal = 'projects' | 'new-project' | 'files' | 'settings' | 'help' | 'drive' | null;
 type Tool = FloorPlanProps['tool'];
 const FloorPlan = lazy(() => import('./components/FloorPlan').then((module) => ({ default: module.FloorPlan })));
@@ -74,6 +75,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newCircuitId, setNewCircuitId] = useState<string>();
   const [floorContextHost, setFloorContextHost] = useState<HTMLDivElement | null>(null);
+  const [boardContextHost, setBoardContextHost] = useState<HTMLDivElement | null>(null);
   const [tool, setTool] = useState<Tool>('select');
   const [catalogEntry, setCatalogEntry] = useState<CatalogEntry>();
   const [modal, setModal] = useState<Modal>(null);
@@ -558,6 +560,14 @@ export default function App() {
                     <span>{t('Gyártói terméktár')}</span>
                   </button>
                 )}
+                {view === 'board' && (data.boardPlanner || standaloneDraft) && <details className="legacy-board-menu">
+                  <summary>{t('Korábbi rajzok')}</summary>
+                  <div className="legacy-board-menu-content">
+                    <p>{t('A korábbi önálló rajz külön megmaradt, és nem része ennek az elosztótervnek.')}</p>
+                    {data.boardPlanner && <button onClick={() => downloadBlob(new Blob([JSON.stringify(data.boardPlanner, null, 2)], { type:'application/json' }), `${safeFilename(data.name)}-korabbi-elosztoterv.json`)}>{t('Projektben őrzött rajz letöltése')}</button>}
+                    {standaloneDraft && <button onClick={() => downloadBlob(new Blob([standaloneDraft!], { type:'application/json' }), `${safeFilename(data.name)}-korabbi-onallo-rajz.json`)}>{t('Böngészőben őrzött rajz letöltése')}</button>}
+                  </div>
+                </details>}
                 {view === 'floor' && (
                   <>
                     <button className="quiet" onClick={() => backgroundInput.current?.click()}>
@@ -603,6 +613,10 @@ export default function App() {
                 </button>
               </div>
               {view === 'floor' && <div className="floor-context-host" ref={setFloorContextHost}/>}
+              {view === 'board' && <div className="board-context-row">
+                <BoardCircuitMenu data={data} boardId={data.boards.find(board => board.id === boardId)?.id ?? data.boards[0]?.id ?? ''} onChange={changeData} onOpenCircuits={() => setView('circuits')}/>
+                <div className="board-context-host" ref={setBoardContextHost}/>
+              </div>}
             </div>
             {view === 'floor' && (
               <div className="plan-heading">
@@ -722,19 +736,8 @@ export default function App() {
                   ))}
                 {view === 'board' && (
                   <div className="integrated-board-view">
-                    {(data.boardPlanner || standaloneDraft) && <div className="integrated-board-line-notice" role="status">
-                      <p>{language === 'en'
-                        ? 'A drawing from the temporary standalone editor is preserved separately. It is not part of this board or its PDF. Download it before making changes; it is not converted automatically.'
-                        : 'Az átmeneti önálló tervező rajza külön megmaradt. Nem része ennek az elosztónak és a PDF-nek. Töltsd le megőrzésre; nem alakítjuk át automatikusan.'}</p>
-                      {data.boardPlanner && <button onClick={() => downloadBlob(new Blob([JSON.stringify(data.boardPlanner, null, 2)], { type: 'application/json' }), `${safeFilename(data.name)}-korabbi-elosztoterv.json`)}>
-                        {language === 'en' ? 'Download project drawing' : 'Projektben őrzött rajz letöltése'}
-                      </button>}
-                      {standaloneDraft && <button onClick={() => downloadBlob(new Blob([standaloneDraft!], { type: 'application/json' }), `${safeFilename(data.name)}-korabbi-onallo-rajz.json`)}>
-                        {language === 'en' ? 'Download browser drawing' : 'Böngészőben őrzött rajz letöltése'}
-                      </button>}
-                    </div>}
                     <div className="integrated-board-classic"><BoardEditor data={data} boardId={boardId} onBoardChange={setBoardId}
-                      selectedId={selectedId} onSelect={setSelectedId} onChange={changeData} onNotify={notify} /></div>
+                      selectedId={selectedId} onSelect={setSelectedId} onChange={changeData} onNotify={notify} actionHost={boardContextHost} /></div>
                   </div>
                 )}
                 {view === 'single-line' && <SingleLine data={data} boardId={boardId} onBoardChange={setBoardId} onSelect={setSelectedId} />}

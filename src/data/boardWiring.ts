@@ -3,6 +3,7 @@ import type { Board, CableDetails, Circuit, Conductor, Device, Phase, ProjectDat
 import { getBoardTerminalWarnings } from './boardTerminalWarnings';
 import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
 import { balancingPhases } from './projectPhases';
+import { circuitBelongsToBoard } from './circuitBoardAssociation';
 
 const phases: Phase[] = ['L1', 'L2', 'L3'];
 
@@ -235,6 +236,22 @@ export function getWiringIssues(data: ProjectData, board: Board): WiringIssue[] 
       connectedNodes.add(bk);
     }
   }
+  // Circuit terminals are load endpoints. They count as a connection to that
+  // terminal, but never join L, N and PE into one electrical network.
+  for (const circuit of data.circuits) for (const connection of circuit.boardConnections ?? []) {
+    if (connection.boardId !== board.id) continue;
+    for (const terminal of connection.terminals) {
+      const actual = conductorAt(terminal.endpoint);
+      if (!actual) continue; // Invalid references are reported/pruned by the project validator.
+      const key = register(terminal.endpoint);
+      active.add(key);
+      if (!compatible(terminal.conductor,actual)) {
+        issues.push({code:'conductor',severity:'error',message:t('{wire}: eltérő vezetőfunkciók kapcsolódnak ({from} – {to}).',{
+          wire:circuit.code,from:terminal.conductor,to:actual,
+        })});
+      } else connectedNodes.add(key);
+    }
+  }
   for (const device of data.devices.filter((item) => item.electrical?.role === 'supply')) {
     devicePoles
       .get(device.id)!
@@ -361,6 +378,7 @@ function boardCircuits(data: ProjectData, board: Board): Circuit[] {
   }
   return data.circuits.filter(
     (circuit) =>
+      circuitBelongsToBoard(data,circuit,board.id) ||
       (circuit.protectionDeviceId && ids.has(circuit.protectionDeviceId)) ||
       data.devices.some((device) => ids.has(device.id) && device.circuitId === circuit.id)
   );

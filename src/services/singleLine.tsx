@@ -3,6 +3,7 @@ import { getLocale, t } from '../i18n';
 import { getBoardConnectionIssues, getBoardDevices } from '../data/boardConnections';
 import { endpointConductor, wiringEndpointLabel, getWiringIssues } from '../data/boardWiring';
 import { wireColorAppearance } from '../data/wireColors';
+import { circuitBelongsToBoard } from '../data/circuitBoardAssociation';
 import type { Board, Circuit, Device, ProjectData, WiringEndpoint, CableDetails } from '../types';
 
 interface GraphNode {
@@ -12,6 +13,7 @@ interface GraphNode {
   label?: string;
   detail?: string;
   bus?: boolean;
+  circuitNode?: boolean;
   missingId?: string;
   incoming: number;
   circuits: Circuit[];
@@ -20,7 +22,8 @@ interface GraphNode {
   height: number;
   rank: number;
 }
-interface GraphEdge { from: string; to: string; id: string; index: number; label?:string; undirected?:boolean; color?:string; stripe?:string; unspecified?:boolean }
+interface GraphEdge { from: string; to: string; id: string; index: number; label?:string; undirected?:boolean; color?:string; stripe?:string; unspecified?:boolean; fromPort?:string; toPort?:string }
+interface GraphPort { key:string; label:string; boardId?:string; color:string }
 export interface SingleLineDrawing {
   svg: string;
   width: number;
@@ -136,12 +139,22 @@ function symbol(device?: Device, supply = false): string {
 /** Pure, self-contained SVG shared by the offline view, download and PDF export. */
 export function buildSingleLineSvg(data: ProjectData, board: Board, combined=false): SingleLineDrawing {
   const devices = new Map(data.devices.map(device => [device.id, device]));
+  const boardCircuits = data.circuits.filter(circuit => combined
+    ? data.boards.some(item => circuitBelongsToBoard(data,circuit,item.id))
+    : circuitBelongsToBoard(data,circuit,board.id));
+  const circuitIds = new Set(boardCircuits.map(circuit => circuit.id));
   const nodes = new Map<string, GraphNode>();
+  const ports = new Map<string, GraphPort[]>();
+  const addPort = (nodeKey:string, port:GraphPort) => {
+    const list = ports.get(nodeKey) ?? [];
+    if (!list.some(item => item.key === port.key)) list.push(port);
+    ports.set(nodeKey,list);
+  };
   const ensureDevice = (id: string) => {
     const key = deviceKey(id);
     if (!nodes.has(key)) {
       const device = devices.get(id);
-      const circuits = device ? data.circuits.filter(circuit => circuit.protectionDeviceId === id || (!circuit.protectionDeviceId && circuit.id === device.circuitId)) : [];
+      const circuits = device ? data.circuits.filter(circuit => !circuitIds.has(circuit.id) && (circuit.protectionDeviceId === id || (!circuit.protectionDeviceId && circuit.id === device.circuitId))) : [];
       nodes.set(key, { key, device, missingId: device ? undefined : id, circuits, incoming: 0, x: 0, y: 0, height: 166 + circuits.length * 70, rank: 0 });
     }
     return key;
@@ -187,6 +200,39 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
     edges.push({from,to,id:wire.id,index:edges.length,undirected:true,color:appearance.color,stripe:appearance.stripe,
       label:[`${wiringEndpointLabel(data,wire.from)} ↔ ${wiringEndpointLabel(data,wire.to)}`,cableLabel(wire.cable),wire.label].filter(Boolean).join(' · ')});
   }
+  // Circuit endpoints are real cabinet associations, independently of floor routes.
+  for (const circuit of boardCircuits) {
+    const key = `circuit:${circuit.id}`;
+    nodes.set(key,{key,label:t('Áramkör'),circuitNode:true,incoming:0,circuits:[circuit],x:0,y:0,height:130,rank:0});
+    const connections = (circuit.boardConnections ?? []).filter(item => combined || item.boardId === board.id);
+    const terminals = connections.flatMap(connection => connection.terminals.map(terminal => ({...terminal,boardId:connection.boardId})));
+    for (const item of terminals) {
+      const from = ensureEndpoint(item.endpoint), appearance = wireColorAppearance({},item.conductor);
+      const endpoint = item.endpoint;
+      const fromPort = endpoint.kind === 'device' ? JSON.stringify(['device',endpoint.deviceId,endpoint.side,endpoint.pole])
+        : endpoint.kind === 'bus' ? JSON.stringify(['bus',endpoint.busId,endpoint.terminal]) : JSON.stringify(['infeed',endpoint.infeedId,endpoint.pole]);
+      const toPort = JSON.stringify([item.boardId,item.conductor]);
+      addPort(from,{key:fromPort,label:item.conductor,color:appearance.color});
+      addPort(key,{key:toPort,label:item.conductor,boardId:item.boardId,color:appearance.color});
+      nodes.get(from)!.incoming++; nodes.get(key)!.incoming++;
+      edges.push({from,to:key,id:`circuit:${circuit.id}:${item.boardId}:${item.conductor}`,index:edges.length,undirected:true,
+        color:appearance.color,stripe:appearance.stripe,fromPort,toPort,
+        label:`${circuit.code} · ${item.conductor} ↔ ${wiringEndpointLabel(data,item.endpoint)}`});
+    }
+    // A manually selected protective device remains a legacy, non-terminal-level association.
+    const hasProtectionTerminal = terminals.some(item => ['L','L1','L2','L3'].includes(item.conductor) &&
+      item.endpoint.kind === 'device' && item.endpoint.deviceId === circuit.protectionDeviceId);
+    if (!hasProtectionTerminal && circuit.protectionDeviceId && (combined || devices.has(circuit.protectionDeviceId) &&
+      (board.rows.some(row => row.placements.some(item => item.deviceId === circuit.protectionDeviceId)) ||
+       devices.get(circuit.protectionDeviceId)?.boardId === board.id))) {
+      const from = ensureDevice(circuit.protectionDeviceId);
+      const toPort = JSON.stringify(['legacy',circuit.id]);
+      addPort(key,{key:toPort,label:'?',color:'#777777'});
+      nodes.get(from)!.incoming++; nodes.get(key)!.incoming++;
+      edges.push({from,to:key,id:`protection:${circuit.id}`,index:edges.length,undirected:true,unspecified:true,toPort,
+        label:`${t('Védelmi készülék')}: ${devices.get(circuit.protectionDeviceId)?.code ?? ''} · ${circuit.code}`});
+    }
+  }
   // Place the supply first regardless of the order in which a connection was entered.
   const ordered = [...nodes.values()].sort((a, b) => Number(!!b.supply) - Number(!!a.supply));
   // Physical conductors have no entered direction. Rank them from their nearest
@@ -204,13 +250,14 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
   for (const node of ordered) { const layer = layers.get(node.rank) ?? []; layer.push(node); layers.set(node.rank, layer); }
   const maxColumns = 6;
   const columns = Math.min(maxColumns, [...layers.values()].reduce((count, layer) => Math.max(count, layer.length), 1));
-  const contentWidth = columns * CARD_WIDTH + Math.max(0, columns - 1) * COLUMN_GAP;
+  const cardWidth = Math.max(CARD_WIDTH,...[...ports.values()].map(items => 36 + (items.length + 1) * 22));
+  const contentWidth = columns * cardWidth + Math.max(0, columns - 1) * COLUMN_GAP;
   let bottom = HEADER_HEIGHT;
   for (const [, layer] of [...layers.entries()].sort(([a], [b]) => a - b)) {
     for (let offset = 0; offset < layer.length; offset += maxColumns) {
       const row = layer.slice(offset, offset + maxColumns);
-      const rowWidth = row.length * CARD_WIDTH + (row.length - 1) * COLUMN_GAP;
-      row.forEach((node, index) => { node.x = MARGIN + (contentWidth - rowWidth) / 2 + index * (CARD_WIDTH + COLUMN_GAP); node.y = bottom; });
+      const rowWidth = row.length * cardWidth + (row.length - 1) * COLUMN_GAP;
+      row.forEach((node, index) => { node.x = MARGIN + (contentWidth - rowWidth) / 2 + index * (cardWidth + COLUMN_GAP); node.y = bottom; });
       bottom += Math.max(...row.map(node => node.height)) + ROW_GAP;
     }
   }
@@ -219,10 +266,15 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
   const rowBottoms = new Map<number, number>();
   for (const node of ordered) rowBottoms.set(node.y, Math.max(rowBottoms.get(node.y) ?? 0, node.y + node.height));
   let outerLaneCount = 0;
+  const portX = (node:GraphNode,key:string) => {
+    const offset = 18 + (ports.get(node.key)?.findIndex(item => item.key === key) ?? 0) * 22;
+    // Keep terminals clear of an existing device's central schematic axis.
+    return node.x + offset + (!node.circuitNode && offset >= cardWidth / 2 - 12 ? 22 : 0);
+  };
   const paths = edges.map(edge => {
     const from = lookup.get(edge.from)!; const to = lookup.get(edge.to)!;
-    const sx = from.x + CARD_WIDTH / 2; const sy = from.y + from.height;
-    const tx = to.x + CARD_WIDTH / 2; const ty = to.y;
+    const sx = edge.fromPort ? portX(from,edge.fromPort) : from.x + cardWidth / 2; const sy = from.y + from.height;
+    const tx = edge.toPort ? portX(to,edge.toPort) : to.x + cardWidth / 2; const ty = to.y;
     let path: string; let labelX: number; let labelY: number;
     if (to.rank === from.rank + 1 && ty > sy && ty - sy <= ROW_GAP + 2) {
       const channel = sy + 24 + (edge.index % 7) * 7;
@@ -258,12 +310,19 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
     const isMissing = node.missingId !== undefined;
     const label = node.label || (node.supply ? board.supplyLabel || t('Elosztó betáplálása') : device?.name || t('Hiányzó készülék'));
     const title = [device?.code || node.missingId, label, node.detail, device?.rating, device?.product?.reference || device?.model, ...node.circuits.map(circuit => `${circuit.code} · ${circuit.name} · ${circuit.cable || ''}${circuit.powerW !== undefined ? ` · ${circuit.powerW} W` : ''}`)].filter(Boolean).join('\n');
-    const dataAttribute = device ? ` data-device-id="${xml(device.id)}" tabindex="0" role="button" aria-label="${xml(`${device.code} · ${device.name}`)}"` : '';
+    const dataAttribute = device ? ` data-device-id="${xml(device.id)}" tabindex="0" role="button" aria-label="${xml(`${device.code} · ${device.name}`)}"`
+      : node.circuitNode ? ` data-circuit-id="${xml(node.circuits[0]?.id)}"` : '';
     // A monochrome engineering drawing: symbols are in the feed axis and the
     // adjacent labels identify the real shared devices and circuits.
-    let content = `<g${dataAttribute}><title>${xml(title)}</title><rect x="${x}" y="${y}" width="${CARD_WIDTH}" height="${node.height}" fill="#fff" fill-opacity="0" stroke="transparent"/><path d="M${x + CARD_WIDTH / 2} ${y}V${y + 17} M${x + CARD_WIDTH / 2} ${y + 53}V${y + node.height}" stroke="#171717" stroke-width="1.4"/><g transform="translate(${x + CARD_WIDTH / 2} ${y + 17})">${symbol(device, node.supply)}</g>`;
-    content += wrapped(x + 151, y + 29, node.bus ? t('Sín') : node.supply ? t('Betáplálás') : device?.code || (node.label ? t('Külső bekötés') : t('Hiányzó készülék')), 16, 1, 13, isMissing?'#a64c30':'#111111', 700);
-    content += wrapped(x + 151, y + 47, label, 16, 2, 11, '#222222', 500);
+    let content = `<g${dataAttribute}><title>${xml(title)}</title><rect x="${x}" y="${y}" width="${cardWidth}" height="${node.height}" fill="#fff" fill-opacity="0" stroke="transparent"/>`;
+    // A circuit is a collection of separate conductors, not one common node.
+    if (!node.circuitNode) content += `<path d="M${x + cardWidth / 2} ${y}V${y + 17} M${x + cardWidth / 2} ${y + 53}V${y + node.height}" stroke="#171717" stroke-width="1.4"/><g transform="translate(${x + cardWidth / 2} ${y + 17})">${symbol(device, node.supply)}</g>`;
+    for (const port of ports.get(node.key) ?? []) {
+      const px = portX(node,port.key), py = node.circuitNode ? y : y + node.height;
+      content += `<g ${node.circuitNode ? `data-circuit-port="${xml(port.label)}" data-board-id="${xml(port.boardId)}"` : `data-terminal-port="${xml(port.key)}"`}><circle cx="${px}" cy="${py}" r="4" fill="#fff" stroke="${safeColor(port.color)}" stroke-width="2"/>${text(px,py + (node.circuitNode ? 14 : -8),port.label,9,'#222',600,'text-anchor="middle"')}</g>`;
+    }
+    content += wrapped(x + 151, y + 29, node.circuitNode ? t('Áramkör') : node.bus ? t('Sín') : node.supply ? t('Betáplálás') : device?.code || (node.label ? t('Külső bekötés') : t('Hiányzó készülék')), 16, 1, 13, isMissing?'#a64c30':'#111111', 700);
+    if (!node.circuitNode) content += wrapped(x + 151, y + 47, label, 16, 2, 11, '#222222', 500);
     if (node.detail) content += wrapped(x+151,y+84,node.detail,16,4,10,'#333333');
     else if (node.supply) content += wrapped(x + 151, y + 84, t('A nyilak a korábbi, irányított kapcsolatokra vonatkoznak.'), 16, 3, 10, '#444444');
     else if (device) {
@@ -271,9 +330,9 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
       content += wrapped(x + 151, y + 117, device.product?.reference || device.model || '—', 16, 2, 10, '#333333', 500);
       if (!node.incoming) content += `<g><title>${xml(t('Nincs megadva a bemenet'))}</title>${wrapped(x + 151, y + 144, t('Nincs megadva a bemenet'), 17, 2, 9, '#a34c30')}</g>`;
       else if(combined) content += wrapped(x+151,y+151,data.boards.find(item=>item.id===device.boardId||item.rows.some(row=>row.placements.some(p=>p.deviceId===device.id)))?.name??'',16,1,10,'#333333');
-    } else content += wrapped(x + 151, y + 100, t('A kapcsolat végpontja nem található a projektben.'), 16, 3, 10, '#a34c30');
+    } else if (!node.circuitNode) content += wrapped(x + 151, y + 100, t('A kapcsolat végpontja nem található a projektben.'), 16, 3, 10, '#a34c30');
     node.circuits.forEach((circuit, index) => {
-      const cy = y + 166 + index * 70;
+      const cy = y + (node.circuitNode ? 44 : 166) + index * 70;
       const metadata = [circuitCableLabel(circuit), circuit.powerW !== undefined ? `${circuit.powerW.toLocaleString(getLocale())} W` : '',circuit.phase].filter(Boolean).join(' · ');
       content += `<g><title>${xml(`${t('Áramkör-hozzárendelés')}: ${circuit.code} · ${circuit.name}\n${metadata}`)}</title>`;
       content += wrapped(x + 151, cy + 16, `${circuit.code} · ${circuit.name}`, 16, 2, 11, '#161616', 600);
@@ -296,7 +355,7 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
     tableHead.map((value,i)=>wrapped(MARGIN + i * column + 6,tableY + 17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#111',700)).join('') +
     uniqueCircuitRows.map(({node,circuit},index)=>{
       const y=tableY + tableRowHeight * (index + 1);
-      const values=[`${circuit.code} · ${circuit.name}`,node.device?.code ?? '—',circuitCableLabel(circuit) || '—',circuit.powerW===undefined?'—':`${circuit.powerW.toLocaleString(getLocale())} W`];
+      const values=[`${circuit.code} · ${circuit.name}`,node.device?.code ?? (circuit.protectionDeviceId ? devices.get(circuit.protectionDeviceId)?.code : undefined) ?? '—',circuitCableLabel(circuit) || '—',circuit.powerW===undefined?'—':`${circuit.powerW.toLocaleString(getLocale())} W`];
       return `<path d="M${MARGIN} ${y}H${MARGIN + tableWidth}" stroke="#777"/>` + values.map((value,i)=>wrapped(MARGIN + i*column + 6,y+17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#222')).join('');
     }).join('');
   const legacyKey = edges.some(edge=>edge.unspecified) ? `<path d="M${MARGIN} 119h32" stroke="#161616" stroke-width="1.8" stroke-dasharray="6 4"/>${text(MARGIN+40,123,t('Szaggatott vonal: korábbi, részletezetlen kapcsolat.'),10,'#333333')}` : '';
@@ -307,7 +366,7 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
   const tableBlocks = Array.from({length:uniqueCircuitRows.length + 1},(_,row) =>
     Array.from({length:4},(_,col) => ({x:MARGIN + col * column, y:tableY + row * tableRowHeight, width:column, height:tableRowHeight}))).flat();
   const titleBlocks = [0,1].map(col=>({x:MARGIN + col * tableWidth / 2, y:height - 82, width:tableWidth / 2, height:46}));
-  return { svg, width, height, blocks: [...ordered.map(node => ({ x: node.x, y: node.y, width: CARD_WIDTH, height: node.height })), ...tableBlocks, ...titleBlocks] };
+  return { svg, width, height, blocks: [...ordered.map(node => ({ x: node.x, y: node.y, width: cardWidth, height: node.height })), ...tableBlocks, ...titleBlocks] };
 }
 
 /** Shared-project overview preserves cross-board wiring without duplicating edges. */

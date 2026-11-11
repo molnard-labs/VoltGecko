@@ -20,7 +20,17 @@ export function circuitProtectionCandidates(data: ProjectData, circuitId: string
   const ids = new Set<string>();
   for (const device of data.devices)
     if (device.circuitId === circuitId && boardDeviceIds.has(device.id) && isCircuitProtectionDevice(device)) ids.add(device.id);
-  for (const sheet of data.sheets) for (const route of sheet.routes) {
+  const circuit = data.circuits.find(item => item.id === circuitId);
+  for (const connection of circuit?.boardConnections ?? []) {
+    for (const item of connection.terminals) {
+      if (!live.has(item.conductor) || item.endpoint.kind !== 'device' ||
+          !isBoardRouteTerminalCompatible(data, connection.boardId, item.conductor, item.endpoint)) continue;
+      const device = devices.get(item.endpoint.deviceId);
+      if (device && isCircuitProtectionDevice(device)) ids.add(device.id);
+    }
+  }
+  // Archives created before circuit-based cabinets still work until their one-time migration.
+  if (!data.circuitBoardMigration) for (const sheet of data.sheets) for (const route of sheet.routes) {
     if (route.kind !== 'power' || floorRouteCircuitId(route, devices) !== circuitId) continue;
     for (const item of route.boardTerminals ?? []) {
       if (!live.has(item.conductor) || item.endpoint.kind !== 'device' ||

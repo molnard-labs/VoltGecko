@@ -10,7 +10,7 @@ const noop = () => {};
 function Drawing({ data, board }: { data: ProjectData; board: Board }) {
   const wiring: BoardWiring = board.wiring ?? { wires: [], buses: [], infeeds: [] };
   const diagram = useWiringDiagram(data, board, wiring, {
-    snapToGrid: false, patchWire: noop, patchBus: noop, patchInfeed: noop, patchFloorPosition: noop, placeDevice: noop,
+    snapToGrid: false, patchWire: noop, patchBus: noop, patchInfeed: noop, patchCircuitPosition: noop, placeDevice: noop,
   });
   return createElement(WiringDiagram, { data, board, wiring, diagram,
     selectedDeviceId: null, onPlaceDevice: noop, onSelectWire: noop, onSelectDevice: noop,
@@ -25,6 +25,9 @@ function fixture() {
   const outlet = makeDevice('outlet', [breaker]);
   data.devices.push(breaker, outlet);
   board.rows[0].placements.push({ deviceId: breaker.id, start: 0 });
+  data.circuits.push({ id:'circuit', code:'ÁK1', name:'Dugaljak', color:'#224466', notes:'', boardConnections:[{
+    boardId: board.id, terminals:[{ conductor:'L', endpoint:{ kind:'device', deviceId:breaker.id, side:'bottom', pole:0 }}]
+  }] });
   const sheet = data.sheets[0];
   sheet.boardPlacements = [{ boardId: board.id, x: 10, y: 10 }];
   sheet.placements.push({ deviceId: outlet.id, x: 200, y: 100, rotation: 0 });
@@ -35,15 +38,16 @@ function fixture() {
   return { data, board, breaker };
 }
 
-describe('floor-plan connections on the wiring diagram', () => {
-  it('shows the route and its assigned terminal, following the device when it moves', () => {
+describe('circuit connections on the wiring diagram', () => {
+  it('shows the circuit and its assigned terminal, following the device when it moves', () => {
     const { data, board } = fixture();
     const render = () => renderToStaticMarkup(createElement(Drawing, { data, board }));
     const first = render();
-    expect(first).toContain('data-floor-route-id="route"');
-    expect(first).toContain('data-floor-route-link="route" data-conductor="L"');
-    expect(first).toContain('Alaprajzi nyomvonal');
-    const points = (markup: string) => markup.match(/data-floor-route-link="route"[^>]*>\s*<polyline points="([^"]+)/)?.[1];
+    expect(first).toContain('data-circuit-id="circuit"');
+    expect(first).toContain('data-circuit-link="circuit" data-conductor="L"');
+    expect(first).not.toContain('data-floor-route-id');
+    expect(first).toContain('Dugaljak');
+    const points = (markup: string) => markup.match(/data-circuit-link="circuit"[^>]*>\s*<polyline points="([^"]+)/)?.[1];
     expect(points(first)).toBeDefined();
     board.rows[0].placements[0].start = 2;
     expect(points(render())).not.toEqual(points(first));
@@ -54,8 +58,8 @@ describe('floor-plan connections on the wiring diagram', () => {
     const { data, board } = fixture();
     board.rows[0].placements = [];
     const markup = renderToStaticMarkup(createElement(Drawing, { data, board }));
-    expect(markup).toContain('data-floor-route-id="route"');
+    expect(markup).toContain('data-circuit-id="circuit"');
     expect(markup).toContain('Kapocs nem látható a rajzon');
-    expect(markup).not.toContain('data-floor-route-link="route"');
+    expect(markup).not.toContain('data-circuit-link="circuit"');
   });
 });

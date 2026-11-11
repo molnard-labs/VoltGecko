@@ -37,8 +37,11 @@ export function pruneInvalidBoardRouteTerminals(data: ProjectData): ProjectData 
         isBoardRouteTerminalPresent(data, terminal.boardId, terminal.endpoint));
       const positions = route.boardPositions?.filter(position => boards.has(position.boardId) &&
         (position.boardId === route.fromBoardId || position.boardId === route.toBoardId));
+      const unresolved = route.legacyUnassignedBoards?.filter(boardId => boards.has(boardId) &&
+        (boardId === route.fromBoardId || boardId === route.toBoardId) &&
+        (terminals?.some(item => item.boardId === boardId) || positions?.some(item => item.boardId === boardId)));
       const missingCircuit = !!route.explicitCircuitId && !circuits.has(route.explicitCircuitId);
-      if (!missingCircuit && terminals?.length === route.boardTerminals?.length && positions?.length === route.boardPositions?.length) return route;
+      if (!missingCircuit && terminals?.length === route.boardTerminals?.length && positions?.length === route.boardPositions?.length && unresolved?.length === route.legacyUnassignedBoards?.length) return route;
       sheetChanged = true;
       const next = { ...route };
       if (missingCircuit) delete next.explicitCircuitId;
@@ -46,6 +49,8 @@ export function pruneInvalidBoardRouteTerminals(data: ProjectData): ProjectData 
       else delete next.boardTerminals;
       if (positions?.length) next.boardPositions = positions;
       else delete next.boardPositions;
+      if (unresolved?.length) next.legacyUnassignedBoards = unresolved;
+      else delete next.legacyUnassignedBoards;
       return next;
     });
     if (!sheetChanged) return sheet;

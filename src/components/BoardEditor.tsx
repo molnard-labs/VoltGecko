@@ -1,4 +1,5 @@
 import { t, getLocale } from '../i18n';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, AlertTriangle, LayoutGrid, ArrowRight } from 'lucide-react';
 import type { Board, Device, ProjectData } from '../types';
 import { uid } from '../catalog';
@@ -7,8 +8,8 @@ import { BoardWiringEditor } from './BoardWiringEditor';
 import { getAvailableBoardDevices, getBoardIssues, placeBoardDevice } from '../data/boardPlacement';
 import { deleteBoard } from '../data/project';
 
-interface Props { data: ProjectData; boardId:string; onBoardChange:(id:string)=>void; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (data: ProjectData) => void; onNotify: (text: string) => void }
-export function BoardEditor({ data, boardId:active, onBoardChange:setActive, selectedId, onSelect, onChange, onNotify }: Props) {
+interface Props { data: ProjectData; boardId:string; onBoardChange:(id:string)=>void; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (data: ProjectData) => void; onNotify: (text: string) => void; actionHost?: HTMLElement | null }
+export function BoardEditor({ data, boardId:active, onBoardChange:setActive, selectedId, onSelect, onChange, onNotify, actionHost }: Props) {
   const formatNumber = (value: number) => value.toLocaleString(getLocale());
   const board = data.boards.find(b => b.id === active) ?? data.boards[0];
   const update = (fn: (board: Board) => void) => { const next = structuredClone(data); const target = next.boards.find(b => b.id === board.id)!; fn(target); onChange(next); };
@@ -33,8 +34,10 @@ export function BoardEditor({ data, boardId:active, onBoardChange:setActive, sel
   if (!board) return <div className="empty"><LayoutGrid size={40}/><h2>{t("Kezdj egy elosztóval")}</h2><p>{t("Add meg a sorokat, majd helyezd el a készülékeket.")}</p><button className="primary" onClick={addBoard}><Plus size={16}/>{t("Elosztó létrehozása")}</button></div>;
   const total = board.rows.reduce((sum, r) => sum + r.capacity, 0);
   const used = board.rows.flatMap(r=>r.placements).reduce((sum,p)=>sum+(data.devices.find(d=>d.id===p.deviceId)?.moduleWidth??1),0);
+  const boardActions = <div className="board-editor-actions"><select aria-label={t('Aktív elosztó')} value={board.id} onChange={e=>setActive(e.target.value)}>{data.boards.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select><button className="icon-button" title={t('Új elosztó')} aria-label={t('Új elosztó')} onClick={addBoard}><Plus size={18}/></button><button className="icon-button danger-hover" title={t('Elosztó törlése')} aria-label={t('Elosztó törlése')} onClick={removeBoard}><Trash2 size={18}/></button></div>;
   return <div className="board-editor">
-    <div className="section-heading"><div><span className="eyebrow">{t("ELOSZTÓTERVEZŐ")}</span><h2>{board.name}</h2><p>{t("Készülékek és modulhelyek, egy helyen.")}</p></div><div className="row-actions"><select aria-label={t("Aktív elosztó")} value={board.id} onChange={e=>setActive(e.target.value)}>{data.boards.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select><button className="icon-button" title={t("Új elosztó")} onClick={addBoard}><Plus size={18}/></button><button className="icon-button danger-hover" title={t('Elosztó törlése')} aria-label={t('Elosztó törlése')} onClick={removeBoard}><Trash2 size={18}/></button></div></div>
+    <div className="section-heading"><div><span className="eyebrow">{t("ELOSZTÓTERVEZŐ")}</span><h2>{board.name}</h2><p>{t("Készülékek és modulhelyek, egy helyen.")}</p></div>{actionHost ? createPortal(boardActions,actionHost) : boardActions}</div>
+    <BoardWiringEditor key={board.id} data={data} board={board} selectedId={selectedId} onChange={onChange} onNotify={onNotify} onSelect={onSelect} onPlaceDevice={(deviceId,rowId,start)=>{const device=data.devices.find(item=>item.id===deviceId);if(device)place(device,rowId,start);}} actionHost={actionHost}/>
     <div className="board-stats"><div><span>{t("Összes modulhely")}</span><strong>{formatNumber(total)}<small>M</small></strong></div><div><span>{t("Tervezett foglaltság")}</span><strong>{formatNumber(used)}<small>M</small></strong></div><div><span>{t("Szabad kapacitás")}</span><strong className={used>total?'danger-text':'green-text'}>{formatNumber(total-used)}<small>M</small></strong></div><div><span>{t("Tervezési jelzések")}</span><strong className={issues.length?'amber-text':''}>{issues.length}</strong></div></div>
     {board.product&&<div className="board-manufacturer"><strong>{board.product.manufacturer} · {board.product.reference}</strong><span>{board.product.range}</span><a href={board.product.sourceUrl} target="_blank" rel="noreferrer noopener">{t('Gyártói forrás')} · {board.product.sourcePage}</a></div>}
     <div className="board-surface board-row-controls">
@@ -49,8 +52,7 @@ export function BoardEditor({ data, boardId:active, onBoardChange:setActive, sel
     </div>
     {issues.length>0&&<div className="validation-box"><h3><AlertTriangle size={16}/>{t("Ellenőrizendő kiosztás")}</h3>{issues.map((i,n)=><p key={n}>{i.message}</p>)}</div>}
     {data.devices.some(d=>d.boardId===board.id&&d.product?.mounting==='accessory')&&<section className="board-accessories"><h3>{t('Elosztó tartozékai')}</h3><p className="subtle">{t('Tartozékok az anyaglistában, DIN-modulhely foglalása nélkül.')}</p>{data.devices.filter(d=>d.boardId===board.id&&d.product?.mounting==='accessory').map(d=><button key={d.id} className={selectedId===d.id?'selected':''} onClick={()=>onSelect(d.id)}><strong>{d.product!.reference}</strong><span>{d.name}</span><small>{d.quantity??1} {t('db')}</small></button>)}</section>}
-    <BoardWiringEditor key={board.id} data={data} board={board} selectedId={selectedId} onChange={onChange} onNotify={onNotify} onSelect={onSelect} onPlaceDevice={(deviceId,rowId,start)=>{const device=data.devices.find(item=>item.id===deviceId);if(device)place(device,rowId,start);}}/>
-    <BoardConnections data={data} board={board} onChange={onChange} onNotify={onNotify} onSelect={id=>onSelect(id)}/>
+    {!!(board.connections?.length || board.supplyLabel?.trim()) && <details className="board-legacy-links"><summary>{t('Korábbi kapcsolatok')}</summary><BoardConnections data={data} board={board} onChange={onChange} onNotify={onNotify} onSelect={id=>onSelect(id)}/></details>}
     <p className="subtle board-hint"><ArrowRight size={15}/>{t("A bal oldali készüléktárból adj hozzá elemeket. A sor alatti listából érintéssel is elhelyezhetők.")}</p>
   </div>;
 }

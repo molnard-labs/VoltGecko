@@ -35,7 +35,9 @@ test('preserves and downloads temporary editor drawings without replacing the sh
   await page.reload();
   await reopenRecentProject(page);
   await page.locator('.view-tabs').getByRole('button', { name: 'Elosztó', exact: true }).click();
-  await expect(page.getByText('Az átmeneti önálló tervező rajza külön megmaradt.', { exact: false })).toBeVisible();
+  await expect(page.getByText('A korábbi önálló rajz külön megmaradt', { exact: false })).toBeHidden();
+  await page.locator('.workspace-toolbar').getByText('Korábbi rajzok', { exact:true }).click();
+  await expect(page.getByText('A korábbi önálló rajz külön megmaradt', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Korábbi elosztónézet' })).toHaveCount(0);
   await expect(page.locator('iframe[title="Elosztótervező"]')).toHaveCount(0);
   const waitProject = page.waitForEvent('download');
@@ -47,6 +49,6 @@ test('preserves and downloads temporary editor drawings without replacing the sh
   await page.getByRole('button', { name: 'Böngészőben őrzött rajz letöltése' }).click();
   expect((await waitBrowser).suggestedFilename()).toContain('korabbi-onallo-rajz.json');
   expect(await page.evaluate(() => ((window as Window & { exportedBlob: Blob }).exportedBlob).text())).toBe(original);
-  await expect(page.getByText('Lakáselosztó', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name:'Lakáselosztó', exact:true })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('eloszto-tervezo-v2'))).toBe(original);
 });

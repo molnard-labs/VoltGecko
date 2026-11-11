@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkpoint, restoreRevision } from '../data/project';
 import { pruneInvalidBoardRouteTerminals } from '../data/boardRouteConnections';
 import { reconcileAutoProtections } from '../data/floorRouteProtection';
+import { migrateLegacyCircuitBoardConnections, preserveSingleBoardCircuits, pruneCircuitBoardConnections } from '../data/circuitBoard';
 import { listProjects, saveProject } from '../data/storage';
 import { t } from '../i18n';
 import type { ProjectData, ProjectDocument, ProjectSummary } from '../types';
@@ -24,8 +25,10 @@ export function useProjectDocument(notify: (message: string) => void) {
   // Event handlers and asynchronous file operations must see a change immediately,
   // including multiple changes before React renders the next frame.
   const setDoc = useCallback((next: ProjectDocument | null) => {
-    docRef.current = next;
-    renderDocument(next);
+    const data = next && reconcileAutoProtections(pruneCircuitBoardConnections(pruneInvalidBoardRouteTerminals(migrateLegacyCircuitBoardConnections(next.data))));
+    const ready = next && data && data !== next.data ? { ...next, data } : next;
+    docRef.current = ready;
+    renderDocument(ready);
   }, []);
 
   const refreshProjects = async () => setProjects(await listProjects());
@@ -102,7 +105,7 @@ export function useProjectDocument(notify: (message: string) => void) {
     undo.current.push(structuredClone(current.data));
     if (undo.current.length > HISTORY_LIMIT) undo.current.shift();
     redo.current = [];
-    setDoc({ ...current, data: reconcileAutoProtections(pruneInvalidBoardRouteTerminals(data)), assets: assets ?? current.assets, updatedAt: new Date().toISOString() });
+    setDoc({ ...current, data:preserveSingleBoardCircuits(current.data,data), assets: assets ?? current.assets, updatedAt: new Date().toISOString() });
   };
   const moveHistory = (from: ProjectData[], to: ProjectData[]) => {
     const current = docRef.current;

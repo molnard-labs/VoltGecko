@@ -245,6 +245,19 @@ function validateWiring(value: JsonObject, devices: unknown[]) {
         if (!isBoardRouteTerminalPresent(value as unknown as ProjectData, terminal.boardId as string, terminal.endpoint as unknown as WiringEndpoint))
           fail('az alaprajzi kapcsolat kapcsa nem a megadott elosztóban található.');
       }
+  for (const circuit of value.circuits as JsonObject[]) for (const connection of (circuit.boardConnections as JsonObject[] | undefined) ?? []) {
+    for (const terminal of connection.terminals as JsonObject[]) {
+      endpoint(terminal.endpoint);
+      if (!isBoardRouteTerminalPresent(value as unknown as ProjectData, connection.boardId as string, terminal.endpoint as unknown as WiringEndpoint))
+        fail('az áramkör kapcsa nem a megadott elosztóban található.');
+    }
+    for (const conflict of (connection.legacyTerminalConflicts as JsonObject[] | undefined) ?? [])
+      for (const candidate of conflict.endpoints as unknown[]) {
+        endpoint(candidate);
+        if (!isBoardRouteTerminalPresent(value as unknown as ProjectData, connection.boardId as string, candidate as WiringEndpoint))
+          fail('a korábbi áramköri kapocs nem a megadott elosztóban található.');
+      }
+  }
 }
 
 function manufacturerSource(value: unknown) {
@@ -313,6 +326,8 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     fail('ismeretlen alaprajzi megjelenítés.');
   if (value.boardPlanner !== undefined && !isBoardPlannerSnapshot(value.boardPlanner))
     fail('az elosztóterv adatai hibásak vagy túl nagyok.');
+  if (value.circuitBoardMigration !== undefined && typeof value.circuitBoardMigration !== 'boolean')
+    fail('az áramköri elosztókapcsolatok állapota érvénytelen.');
   array(value.devices, 'Készülékek');
   array(value.circuits, 'Áramkörök');
   array(value.sheets, 'Tervlapok', 500);
@@ -367,6 +382,41 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     if (entry.loadType !== undefined && !['socket', 'lamp', 'motor', 'other'].includes(entry.loadType as string))
       fail('ismeretlen fogyasztótípus.');
     if (entry.phase !== undefined && !['L', 'L1', 'L2', 'L3'].includes(entry.phase as string)) fail('ismeretlen fázis.');
+    if (entry.boardConnections !== undefined) {
+      array(entry.boardConnections, 'Áramkör elosztói', 500);
+      const connectedBoards = new Set<string>();
+      for (const connection of entry.boardConnections) {
+        object(connection, 'Áramkör elosztója');
+        reference(connection.boardId, boards, 'Áramkör elosztója');
+        if (connectedBoards.has(connection.boardId as string)) fail('az áramkör elosztója ismétlődik.');
+        connectedBoards.add(connection.boardId as string);
+        if (connection.hidden !== undefined && typeof connection.hidden !== 'boolean') fail('hibás elosztóláthatóság.');
+        if (connection.legacyPositionConflict !== undefined && typeof connection.legacyPositionConflict !== 'boolean') fail('hibás pozícióütközés.');
+        if (connection.position !== undefined) { object(connection.position, 'Áramkörpozíció'); point(connection.position, 'Áramkörpozíció'); }
+        if (connection.legacyPositionOptions !== undefined) {
+          array(connection.legacyPositionOptions, 'Korábbi áramkörpozíciók', 1000);
+          for (const position of connection.legacyPositionOptions) { object(position, 'Korábbi áramkörpozíció'); point(position, 'Korábbi áramkörpozíció'); }
+        }
+        array(connection.terminals, 'Áramkör kapcsai', 7);
+        const conductorsUsed = new Set<string>();
+        for (const terminal of connection.terminals) {
+          object(terminal, 'Áramkör kapcsa');
+          if (typeof terminal.conductor !== 'string' || !conductors.has(terminal.conductor)) fail('ismeretlen vezetőfunkció.');
+          if (conductorsUsed.has(terminal.conductor)) fail('egy áramköri vezetőhöz csak egy kapocs tartozhat.');
+          conductorsUsed.add(terminal.conductor);
+        }
+        if (connection.legacyTerminalConflicts !== undefined) {
+          array(connection.legacyTerminalConflicts, 'Korábbi kapocsütközések', 7);
+          for (const conflict of connection.legacyTerminalConflicts) {
+            object(conflict, 'Korábbi kapocsütközés');
+            if (typeof conflict.conductor !== 'string' || !conductors.has(conflict.conductor)) fail('ismeretlen vezetőfunkció.');
+            if (conductorsUsed.has(conflict.conductor)) fail('ismétlődő áramköri vezetőfunkció.');
+            conductorsUsed.add(conflict.conductor);
+            array(conflict.endpoints, 'Korábbi kapcsok', 1000);
+          }
+        }
+      }
+    }
     cableDetails(entry.cableDetails);
   }
   for (const sheet of value.sheets) {
@@ -426,6 +476,16 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       }
       reference(route.circuitId, circuits, 'Kapcsolat áramköre', true);
       reference(route.explicitCircuitId, circuits, 'Kapcsolat kiválasztott áramköre', true);
+      if (route.legacyUnassignedBoards !== undefined) {
+        array(route.legacyUnassignedBoards, 'Korábbi hozzárendeletlen elosztók', 2);
+        const unresolved = new Set<string>();
+        for (const id of route.legacyUnassignedBoards) {
+          reference(id, boards, 'Kapcsolat elosztója');
+          if (id !== route.fromBoardId && id !== route.toBoardId) fail('a korábbi elosztónak a kapcsolat végpontján kell lennie.');
+          if (unresolved.has(id as string)) fail('ismétlődő korábbi elosztó.');
+          unresolved.add(id as string);
+        }
+      }
       if (route.boardPositions !== undefined) {
         array(route.boardPositions, 'Elosztói nyomvonalpozíciók', 2);
         const positioned = new Set<string>();

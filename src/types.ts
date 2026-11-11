@@ -1,6 +1,6 @@
 import type { ProductSnapshot } from './products/types';
 export type DeviceKind = 'outlet' | 'switch' | 'light' | 'junction' | 'sensor' | 'relay' | 'hub' | 'breaker' | 'rcd' | 'rcbo' | 'spd' | 'main' | 'blank' | 'custom';
-export type DeviceVariant = 'switch-double-pole' | 'switch-series' | 'switch-two-way' | 'switch-intermediate' | 'switch-double-two-way' | 'switch-dimmer' | 'switch-push-button' | 'switch-push-button-lit' | 'outlet-double' | 'outlet-weatherproof' | 'outlet-three-phase' | 'light-wall' | 'light-linear' | 'light-led-strip' | 'sensor-motion' | 'sensor-thermostat' | 'custom-tv' | 'custom-data' | 'custom-phone' | 'custom-bell';
+export type DeviceVariant = 'switch-double-pole' | 'switch-series' | 'switch-two-way' | 'switch-intermediate' | 'switch-double-two-way' | 'switch-dimmer' | 'switch-push-button' | 'switch-push-button-lit' | 'outlet-double' | 'outlet-weatherproof' | 'outlet-three-phase' | 'light-wall' | 'light-linear' | 'light-led-strip' | 'sensor-motion' | 'sensor-thermostat' | 'custom-tv' | 'custom-data' | 'custom-phone' | 'custom-bell' | 'board-terminal' | 'board-mpcb' | 'board-meter';
 export type CatalogGroup = 'switches' | 'outlets' | 'lights' | 'control' | 'connections';
 export type DeviceStatus = 'planned' | 'installed' | 'verified';
 export type FloorPlanDisplay = 'symbols' | 'images';
@@ -19,10 +19,10 @@ export interface Placement extends Point { deviceId: string; rotation: number }
 /** Location of an existing distribution board on a drawing sheet. */
 export interface FloorBoardPlacement extends Point { boardId: string }
 /** Each end refers to exactly one device or distribution board. */
-export interface Route { id: string; fromDeviceId?: string; fromBoardId?: string; toDeviceId?: string; toBoardId?: string; kind: 'power' | 'control'; circuitId?: string; explicitCircuitId?: string; boardTerminals?: BoardRouteTerminal[]; boardPositions?: BoardRoutePosition[]; points: Point[] }
+export interface Route { id: string; fromDeviceId?: string; fromBoardId?: string; toDeviceId?: string; toBoardId?: string; kind: 'power' | 'control'; circuitId?: string; explicitCircuitId?: string; boardTerminals?: BoardRouteTerminal[]; boardPositions?: BoardRoutePosition[]; legacyUnassignedBoards?:string[]; points: Point[] }
 export interface Annotation extends Point { id: string; text: string; kind?: 'text'; fontSize?: number; color?: string }
 export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; boardPlacements?: FloorBoardPlacement[]; routes: Route[]; annotations: Annotation[] }
-export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; protectionAuto?: boolean; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
+export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; protectionAuto?: boolean; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails; boardConnections?:CircuitBoardConnection[] }
 export interface BoardPlacement { deviceId: string; start: number }
 export interface BoardRow { id: string; name: string; capacity: number; placements: BoardPlacement[] }
 /** Device-level supply links, independent of floor-plan routes; no individual terminals. */
@@ -54,6 +54,8 @@ export type WiringEndpoint =
 export interface BoardRouteTerminal { boardId:string; conductor:Conductor; endpoint:WiringEndpoint }
 /** An independent position for this route's symbol in each connected board drawing. */
 export interface BoardRoutePosition extends Point { boardId:string }
+export interface CircuitBoardTerminal { conductor:Conductor; endpoint:WiringEndpoint }
+export interface CircuitBoardConnection { boardId:string; terminals:CircuitBoardTerminal[]; position?:Point; hidden?:boolean; legacyTerminalConflicts?:{conductor:Conductor; endpoints:WiringEndpoint[]}[]; legacyPositionConflict?:boolean; legacyPositionOptions?:Point[] }
 export interface BoardWire {
   id:string; from:WiringEndpoint; to:WiringEndpoint; color?:string; colorPattern?:'green-yellow'; cable?:CableDetails;
   points?:Point[]; label?:string; labelOffset?:Point;
@@ -75,7 +77,7 @@ export interface BoardPlannerSnapshot {
   comps: Record<string, unknown>[]; wires: unknown[]; bw: unknown[]; bb: unknown[]; stubs: unknown[];
   nid: number; lo?: Record<string, unknown>;
 }
-export interface ProjectData { id: string; name: string; site: string; client: string; notes: string; sheets: PlanSheet[]; devices: Device[]; circuits: Circuit[]; boards: Board[]; floorPlanDisplay?: FloorPlanDisplay; boardPlanner?: BoardPlannerSnapshot }
+export interface ProjectData { id: string; name: string; site: string; client: string; notes: string; sheets: PlanSheet[]; devices: Device[]; circuits: Circuit[]; boards: Board[]; floorPlanDisplay?: FloorPlanDisplay; boardPlanner?: BoardPlannerSnapshot; circuitBoardMigration?:boolean }
 export interface Revision { id: string; parentId?: string; createdAt: string; note: string; data: ProjectData; restoredFrom?: string }
 export interface ProjectDocument { schemaVersion: 1; data: ProjectData; assets: Record<string, Asset>; revisions: Revision[]; headRevisionId?: string; updatedAt: string; lastExternalSaveAt?: string; lastDriveSaveAt?: string }
 export interface ProjectSummary { id: string; name: string; site: string; updatedAt: string }

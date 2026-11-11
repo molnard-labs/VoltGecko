@@ -47,8 +47,11 @@ test('preserves the exact four-pole neutral terminal in either selection order a
   await page.getByLabel('1. töréspont x',{exact:true}).fill('310');
   await page.getByLabel('1. töréspont y',{exact:true}).fill('290');
   const handle=page.getByTestId('wire-bend-0');await handle.scrollIntoViewIfNeeded();const bounds=await handle.boundingBox();if(!bounds)throw new Error('No bend handle');
+  const target=await handle.evaluate(element=>{const circle=element as SVGCircleElement,matrix=circle.getScreenCTM()!;const initial=new DOMPoint(Number(circle.getAttribute('cx')),Number(circle.getAttribute('cy')));const screen=initial.matrixTransform(matrix);const result=new DOMPoint(screen.x+25,screen.y+15).matrixTransform(matrix.inverse());return {x:result.x,y:result.y};});
   await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+25,bounds.y+bounds.height/2+15,{steps:5});await page.mouse.up();
-  await expect.poll(async()=>(await readDocument(page)).data.boards[0].wiring!.wires[1].points?.[0]).toEqual({x:335,y:305});
+  await expect.poll(async()=>(await readDocument(page)).data.boards[0].wiring!.wires[1].points?.some(point=>Math.abs(point.x-target.x)<1&&Math.abs(point.y-target.y)<1)).toBe(true);
+  const editedPoints=(await readDocument(page)).data.boards[0].wiring!.wires[1].points!;
+  expect(editedPoints.every((point,index)=>!index||point.x===editedPoints[index-1].x||point.y===editedPoints[index-1].y)).toBe(true);
   await page.getByLabel('Felirat x',{exact:true}).fill('28');
   await page.getByLabel('Felirat y',{exact:true}).fill('14');
   await page.getByLabel('1. sín kapacitása',{exact:true}).fill('2');
@@ -57,7 +60,7 @@ test('preserves the exact four-pole neutral terminal in either selection order a
   expect((await readDocument(page)).data.boards[0].wiring!.wires).toHaveLength(2);
   await page.reload();await reopenRecentProject(page);await openBoard(page);
   await page.locator('.wiring-wire-list').getByRole('button',{name:'N összekötés',exact:true}).click();
-  const saved=(await readDocument(page)).data.boards[0].wiring!.wires[1];expect(saved.points?.[0]).toEqual({x:335,y:305});expect(saved.labelOffset).toEqual({x:28,y:14});expect(saved.cable).toMatchObject({designation:'H07V-K',cores:1,crossSectionMm2:6,lengthM:2,resistanceOhmPerKm:3.39});
+  const saved=(await readDocument(page)).data.boards[0].wiring!.wires[1];expect(saved.points).toEqual(editedPoints);expect(saved.labelOffset).toEqual({x:28,y:14});expect(saved.cable).toMatchObject({designation:'H07V-K',cores:1,crossSectionMm2:6,lengthM:2,resistanceOhmPerKm:3.39});
   expect((await readDocument(page)).data.sheets).toEqual(original.data.sheets);expect((await readDocument(page)).data.boards[0].connections).toEqual(original.data.boards[0].connections);
   await expect(page.locator('rect.wiring-device')).toHaveCount(6);await page.locator('.wiring-device-group').filter({hasText:'Q1'}).click();await page.getByLabel('Névleges adatok',{exact:true}).fill('4P 40 A');await expect.poll(async()=>(await readDocument(page)).data.devices.find(device=>device.id===main.id)?.rating).toBe('4P 40 A');
   expect(errors).toEqual([]);
@@ -76,9 +79,9 @@ test('creates useful device presets and keeps a bus used by another cabinet',asy
   await expect.poll(async()=>(await readDocument(page)).data.boards[0].wiring?.buses.length).toBe(1);
   const bus=(await readDocument(page)).data.boards[0].wiring!.buses[0];
   page.once('dialog',dialog=>dialog.accept('Melléképület'));await page.getByRole('button',{name:'Új elosztó',exact:true}).click();
-  await page.getByRole('button',{name:'Sorkapocs hozzáadása',exact:true}).click();
-  await page.getByRole('button',{name:'Motorvédő hozzáadása',exact:true}).click();
-  await page.getByRole('button',{name:'Fogyasztásmérő hozzáadása',exact:true}).click();
+  await page.locator('.board-catalog').getByRole('button',{name:/^Sorkapocs/}).click();
+  await page.locator('.board-catalog').getByRole('button',{name:/^Motorvédő/}).click();
+  await page.locator('.board-catalog').getByRole('button',{name:/^Fogyasztásmérő/}).click();
   await expect.poll(async()=>(await readDocument(page)).data.devices.length).toBe(original.data.devices.length+3);
   const project=await readDocument(page),terminal=project.data.devices.find(device=>device.code==='XT1')!;
   expect(terminal.moduleWidth).toBeCloseTo(29/18);expect(terminal.electrical?.commonPoleGroups).toBeUndefined();

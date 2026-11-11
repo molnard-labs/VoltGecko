@@ -33,6 +33,17 @@ afterEach(() => {
   pdfCalls.text.length = 0;
 });
 
+function stubPdfDiagramRaster() {
+  vi.stubGlobal('DOMParser', class { parseFromString() { return { documentElement:{ setAttribute() {} } }; } });
+  vi.stubGlobal('XMLSerializer', class { serializeToString() { return '<svg xmlns="http://www.w3.org/2000/svg"/>'; } });
+  vi.stubGlobal('Image', class {
+    onload?: () => void;
+    set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+  });
+  vi.stubGlobal('document', { documentElement:{lang:''}, title:'', querySelector:() => null,
+    createElement: () => ({ width:0, height:0, getContext:() => ({ fillStyle:'', fillRect() {}, drawImage() {} }) }) });
+}
+
 describe('service language boundaries', () => {
   it('translates PDF documentation while preserving all user content and the project', async () => {
     setLanguage('en');
@@ -95,7 +106,7 @@ describe('service language boundaries', () => {
     expect(pdfCalls.text.filter(value => value === 'Elosztó A')).toHaveLength(without + 1);
   });
 
-  it('includes board endpoints in the professional PDF connection schedule', async () => {
+  it('shows board markers on the floor plan without a separate route schedule', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
     const doc = createProject('Projekt');
     const first = doc.data.boards[0];
@@ -106,17 +117,18 @@ describe('service language boundaries', () => {
     sheet.boardPlacements = [{ boardId: first.id, x: 100, y: 100 }, { boardId: second.id, x: 200, y: 100 }];
     sheet.routes = [{ id: 'route', fromBoardId: first.id, toBoardId: second.id, kind: 'power', points: [] }];
     await buildPdf(doc, 'professional');
-    const schedule = pdfCalls.text.slice(pdfCalls.text.indexOf('Kapcsolatjegyzék'));
-    expect(schedule).toContain('Kiinduló pont');
-    expect(schedule).toContain('Főelosztó');
-    expect(schedule).toContain('Műhely elosztó');
+    expect(pdfCalls.text).toContain('Főelosztó');
+    expect(pdfCalls.text).toContain('Műhely elosztó');
+    expect(pdfCalls.text).not.toContain('Kapcsolatjegyzék');
   });
 
-  it('documents floor routes and their assigned board terminals in the PDF', async () => {
+  it('documents migrated circuit terminal connections in the PDF', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    stubPdfDiagramRaster();
     const doc = createProject('Projekt');
     const board = doc.data.boards[0];
     board.name = 'Főelosztó';
+    delete doc.data.circuitBoardMigration; // Fixture created by a pre-migration application.
     board.wiring = { wires:[], infeeds:[], buses:[{ id:'n-bus', name:'N sín', conductor:'N', capacity:2, position:'bottom', terminalLabels:['', ''] }] };
     const second = { ...structuredClone(board), id:'other-board', name:'Műhely', wiring:undefined };
     doc.data.boards.push(second);
@@ -125,30 +137,26 @@ describe('service language boundaries', () => {
     sheet.boardPlacements = [{ boardId:board.id, x:100, y:100 }, { boardId:second.id, x:200, y:100 }];
     sheet.routes = [{ id:'r', fromBoardId:board.id, toBoardId:second.id, explicitCircuitId:'circuit', kind:'power', points:[], boardTerminals:[{ boardId:board.id, conductor:'N', endpoint:{kind:'bus',busId:'n-bus',terminal:1} }] }];
     await buildPdf(doc, 'professional');
-    const start = pdfCalls.text.indexOf('Főelosztó · alaprajzi csatlakozások');
+    const start = pdfCalls.text.indexOf('Főelosztó · áramköri csatlakozások');
     expect(start).toBeGreaterThan(-1);
     const connections = pdfCalls.text.slice(start, start + 15);
-    expect(connections).toContain('Műhely');
     expect(connections).toContain('ÁK7 · Műhely');
     expect(connections).toContain('N sín · 2 (N)');
+    expect(pdfCalls.text).toContain('Főelosztó · egyvonalas rajz');
   });
 
-  it('uses current device circuit assignments in the PDF connection schedule', async () => {
+  it('documents canonical circuit terminals even without any floor routes', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    stubPdfDiagramRaster();
     const doc = createProject('Projekt');
-    const device = makeDevice('outlet', []);
-    device.circuitId = 'new';
-    doc.data.devices.push(device);
-    doc.data.circuits = [
-      { id:'old', code:'OLD', name:'Old', color:'#888888', notes:'' },
-      { id:'new', code:'NEW', name:'New', color:'#ff0000', notes:'' },
-    ];
-    const sheet = doc.data.sheets[0];
-    sheet.boardPlacements = [{ boardId:doc.data.boards[0].id, x:200, y:100 }];
-    sheet.routes = [{ id:'r', fromDeviceId:device.id, toBoardId:doc.data.boards[0].id, circuitId:'old', kind:'power', points:[] }];
+    const board = doc.data.boards[0];
+    board.wiring = {wires:[],infeeds:[],buses:[{id:'pe',name:'PE sín',conductor:'PE',capacity:2,position:'bottom',terminalLabels:[]}]};
+    doc.data.circuits = [{id:'c',code:'ÁK1',name:'Dugalj',color:'#ff0000',notes:'',boardConnections:[{boardId:board.id,terminals:[{conductor:'PE',endpoint:{kind:'bus',busId:'pe',terminal:0}}]}]}];
+    doc.data.circuitBoardMigration = true;
     await buildPdf(doc, 'professional');
-    const schedule = pdfCalls.text.slice(pdfCalls.text.indexOf('Kapcsolatjegyzék'));
-    expect(schedule).toContain('NEW');
-    expect(schedule).not.toContain('OLD');
+    const connections = pdfCalls.text.slice(pdfCalls.text.indexOf(`${board.name} · áramköri csatlakozások`));
+    expect(connections).toContain('ÁK1 · Dugalj');
+    expect(connections).toContain('PE sín · 1 (PE)');
+    expect(pdfCalls.text).toContain(`${board.name} · egyvonalas rajz`);
   });
 });

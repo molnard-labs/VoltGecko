@@ -17,7 +17,7 @@ async function documentData(page: Page): Promise<ProjectDocument> {
   });
 }
 
-test('shows the bottom add-bend button only for the selected wire and stores the new point', async ({ page }) => {
+test('shows the top add-bend action only for the selected wire and stores the new point', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await chooseSample(page);
@@ -32,6 +32,7 @@ test('shows the bottom add-bend button only for the selected wire and stores the
   await page.getByLabel('Vezeték végpontja', { exact: true }).selectOption(endpoint(other.id));
   await page.getByRole('button', { name: 'Vezeték létrehozása', exact: true }).click();
   await expect(button).toBeVisible();
+  await expect(page.locator('.workspace-toolbar').getByRole('button', { name: 'Töréspont hozzáadása', exact: true })).toBeVisible();
   const size = await button.boundingBox();
   expect(size?.height).toBeGreaterThanOrEqual(44);
   const before = await page.locator('[data-testid^="wire-bend-"]').count();

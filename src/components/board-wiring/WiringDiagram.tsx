@@ -3,7 +3,7 @@ import type { PointerEvent } from 'react';
 import { GripHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import { getBoardIssues } from '../../data/boardPlacement';
-import { floorRouteCircuitId } from '../../data/floorRouteCircuit';
+import { getCircuitBoardConnections } from '../../data/circuitBoard';
 import { projectPhases } from '../../data/projectPhases';
 import { devicePhysicalPoleOrder, effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { automaticWireRoute } from '../../data/boardWireRouting';
@@ -18,6 +18,7 @@ import type {
   BoardWire,
   BoardWiring,
   Conductor,
+  CircuitBoardConnection,
   Point,
   ProjectData,
   WiringEndpoint
@@ -36,7 +37,7 @@ const catalogImages = new Map(
 );
 
 type Drag = {
-  kind: 'point' | 'segment' | 'label' | 'bus' | 'infeed' | 'infeed-label' | 'floor-route';
+  kind: 'point' | 'segment' | 'label' | 'bus' | 'infeed' | 'infeed-label' | 'circuit';
   id: string;
   index?: number;
   point: Point;
@@ -61,7 +62,7 @@ interface WiringChanges {
   patchWire: (id: string, patch: Partial<BoardWire>) => void;
   patchBus: (id: string, patch: Partial<BoardBus>) => void;
   patchInfeed: (id: string, patch: Partial<BoardInfeed>) => void;
-  patchFloorPosition: (sheetId: string, routeId: string, point: Point) => void;
+  patchCircuitPosition: (circuitId: string, point: Point) => void;
   placeDevice: (deviceId: string, rowId: string, start: number) => void;
 }
 
@@ -69,7 +70,7 @@ export function useWiringDiagram(
   data: ProjectData,
   board: Board,
   wiring: BoardWiring,
-  { patchWire, patchBus, patchInfeed, patchFloorPosition, placeDevice, snapToGrid }: WiringChanges
+  { patchWire, patchBus, patchInfeed, patchCircuitPosition, placeDevice, snapToGrid }: WiringChanges
 ) {
   const [drag, setDragState] = useState<Drag>();
   const dragRef = useRef<Drag | undefined>(undefined);
@@ -302,7 +303,7 @@ export function useWiringDiagram(
     svgRef.current?.setPointerCapture(event.pointerId);
     const cursor = svgPoint(event.clientX, event.clientY);
     const view = svgRef.current!.viewBox.baseVal;
-    const stableViewport = !!initialRoute || kind === 'floor-route' || kind === 'infeed';
+    const stableViewport = !!initialRoute || kind === 'circuit' || kind === 'infeed';
     setDrag({ kind, id, index, point, delta: { x: point.x - cursor.x, y: point.y - cursor.y },
       ...(initialRoute ? { initialRoute: initialRoute.map(item => ({ ...item })) } : {}),
       ...(stableViewport ? { clientStart: { x: event.clientX, y: event.clientY }, moved: false,
@@ -322,8 +323,8 @@ export function useWiringDiagram(
     setDrag(undefined);
     if (value.kind === 'bus') patchBus(value.id, { offset: value.point });
     else if (value.kind === 'infeed') { if (value.moved) patchInfeed(value.id, { position: value.point }); }
-    else if (value.kind === 'floor-route') {
-      if (value.moved) { const [sheetId, routeId] = JSON.parse(value.id) as [string, string]; patchFloorPosition(sheetId, routeId, value.point); }
+    else if (value.kind === 'circuit') {
+      if (value.moved) patchCircuitPosition(value.id, value.point);
     }
     else if (value.kind === 'infeed-label') {
       const index = wiring.infeeds.findIndex((source) => source.id === value.id),
@@ -376,22 +377,28 @@ export function useWiringDiagram(
     }
   });
   // A live preview must not change its own coordinate origin or scroll extent.
-  // Show the floor-plan connections below the cabinet without moving its existing
-  // rows, supplies, buses or wires. The visual links are derived, not board wires.
-  const floorRoutes = data.sheets.flatMap(sheet => sheet.routes
-    .filter(item => item.fromBoardId === board.id || item.toBoardId === board.id)
-    .map(item => ({ sheet, route: item })));
-  const floorRoutesY = maxY + 32;
-  const floorRoutePosition = (sheetId: string, route: ProjectData['sheets'][number]['routes'][number], index: number): Point => {
-    const key = JSON.stringify([sheetId, route.id]);
-    if (drag?.kind === 'floor-route' && drag.id === key) return drag.point;
-    return route.boardPositions?.find(item => item.boardId === board.id) ?? { x: 32, y: floorRoutesY + index * 82 };
+  // Circuits belong to the cabinet independently of floor-plan geometry.
+  // Their terminals face the cabinet on the left side of each box.
+  const boardCircuits = getCircuitBoardConnections(data, board.id);
+  const boardCircuitPosition = (circuitId: string, connection: CircuitBoardConnection, index: number): Point => {
+    if (drag?.kind === 'circuit' && drag.id === circuitId) return drag.point;
+    // Keep the first circuit in the initial horizontal viewport, below the DIN
+    // rows. A right-hand gutter would hide every circuit behind horizontal scroll.
+    const rowsBottom = board.rows.length ? 130 + (board.rows.length - 1) * 230 + 100 : 80;
+    const savedBusY = (bus: BoardBus) => {
+      const row = board.rows.findIndex(item => item.id === bus.rowId);
+      return bus.offset?.y ?? (row >= 0 ? 130 + row * 230 + (bus.position === 'top' ? -56 : 154)
+        : bus.position === 'top' ? 55 : layoutHeight - 48);
+    };
+    const occupiedBottom = Math.max(rowsBottom,
+      ...wiring.buses.map(bus => savedBusY(bus) + 38),
+      ...wiring.infeeds.map((source, sourceIndex) => (source.position?.y ?? 110 + sourceIndex * 145) + 58));
+    return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 250 };
   };
-  for (const [index, item] of floorRoutes.entries()) {
-    const position = floorRoutePosition(item.sheet.id, item.route, index);
-    // Reserve the complete bundle above the marker (up to seven conductor bends).
-    minX = Math.min(minX, position.x - 25); minY = Math.min(minY, position.y - 88);
-    maxX = Math.max(maxX, position.x + 325); maxY = Math.max(maxY, position.y + 82);
+  for (const [index, item] of boardCircuits.entries()) {
+    const position = boardCircuitPosition(item.circuit.id, item.connection, index);
+    minX = Math.min(minX, position.x - 100); minY = Math.min(minY, position.y - 25);
+    maxX = Math.max(maxX, position.x + 250); maxY = Math.max(maxY, position.y + 260);
   }
   for (const [index, source] of wiring.infeeds.entries()) {
     const origin = sourceOrigin(source, index);
@@ -416,9 +423,8 @@ export function useWiringDiagram(
     busOrigin,
     sourceOrigin,
     externalEndpoints,
-    floorRoutes,
-    floorRoutesY,
-    floorRoutePosition,
+    boardCircuits,
+    boardCircuitPosition,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -427,7 +433,7 @@ export function useWiringDiagram(
     moveDrag,
     patchWire,
     patchInfeed,
-    patchFloorPosition,
+    patchCircuitPosition,
     commitDrag,
     startDeviceDrag,
     moveDeviceDrag,
@@ -480,8 +486,8 @@ interface Props {
   onSelectEndpoint: (endpoint: WiringEndpoint) => void;
   onReconnectEndpoint: (id: string, side: 'from' | 'to', endpoint: WiringEndpoint) => void;
   onNotify: (message: string) => void;
-  selectedFloorConnector?: { sheetId: string; routeId: string; conductor: Conductor };
-  onSelectFloorConnector?: (sheetId: string, routeId: string, conductor: Conductor) => void;
+  selectedCircuitConnector?: { circuitId: string; conductor: Conductor };
+  onSelectCircuitConnector?: (circuitId: string, conductor: Conductor) => void;
 }
 
 export function WiringDiagram({
@@ -499,14 +505,14 @@ export function WiringDiagram({
   onSelectEndpoint,
   onReconnectEndpoint,
   onNotify,
-  selectedFloorConnector,
-  onSelectFloorConnector
+  selectedCircuitConnector,
+  onSelectCircuitConnector
 }: Props) {
   const pePatternId = `wiring-pe-${useId().replace(/:/g, '')}`;
   const deviceClipId = `wiring-device-${useId().replace(/:/g, '')}`;
   const gridPatternId = `wiring-grid-${useId().replace(/:/g, '')}`;
-  const lastFloorTouch = useRef<{key:string; time:number} | undefined>(undefined);
-  const floorTouchStart = useRef<{key:string; pointerId:number; x:number; y:number} | undefined>(undefined);
+  const lastCircuitTouch = useRef<{key:string; time:number} | undefined>(undefined);
+  const circuitTouchStart = useRef<{key:string; pointerId:number; x:number; y:number} | undefined>(undefined);
   const {
     svgRef,
     snapToGrid,
@@ -522,8 +528,8 @@ export function WiringDiagram({
     busOrigin,
     sourceOrigin,
     externalEndpoints,
-    floorRoutes,
-    floorRoutePosition,
+    boardCircuits,
+    boardCircuitPosition,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -532,7 +538,7 @@ export function WiringDiagram({
     moveDrag,
     patchWire,
     patchInfeed,
-    patchFloorPosition,
+    patchCircuitPosition,
     commitDrag,
     startDeviceDrag,
     moveDeviceDrag,
@@ -601,7 +607,7 @@ export function WiringDiagram({
   ];
   const localVisibleEndpoint = (endpoint: WiringEndpoint) =>
     !externalEndpoints.has(encodeEndpoint(endpoint)) && visibleEndpoints.some(item => sameEndpoint(item, endpoint));
-  const floorConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
+  const circuitConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
     const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
       wiring.buses.some(bus => bus.conductor === 'PEN') ||
       [...devicePositions.keys()].some(id => effectiveDevicePoles(devicesById.get(id)!).includes('PEN'));
@@ -749,22 +755,19 @@ export function WiringDiagram({
             </text>
           </g>
         ))}
-        {floorRoutes.map(({ sheet, route: floorRoute }, index) => {
-          const origin = floorRoutePosition(sheet.id, floorRoute, index), y = origin.y;
-          const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
-          const conductors = floorConductors(connections);
-          return <g key={`floor-links-${sheet.id}-${floorRoute.id}`} aria-hidden="true" pointerEvents="none">
-            {connections.map((connection) => {
-              // A project can contain a board device that has not yet been placed
-              // on a DIN row; do not draw a misleading wire to a fallback point.
-              if (!localVisibleEndpoint(connection.endpoint)) return null;
-              const connectionIndex = conductors.indexOf(connection.conductor);
-              const start = { x: origin.x + 23 + connectionIndex * 34, y };
-              const end = endpointPoint(connection.endpoint);
-              const midY = y - 20 - connectionIndex * 8;
-              const points = `${start.x},${start.y} ${start.x},${midY} ${end.x},${midY} ${end.x},${end.y}`;
-              const appearance = wireColorAppearance(defaultWireColor(connection.conductor));
-              return <g key={connection.conductor} data-floor-route-link={floorRoute.id} data-conductor={connection.conductor}>
+        {boardCircuits.map(({ circuit, connection }, index) => {
+          const origin = boardCircuitPosition(circuit.id, connection, index);
+          const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+          return <g key={'circuit-links-' + circuit.id} aria-hidden="true" pointerEvents="none">
+            {connection.terminals.map(item => {
+              if (!localVisibleEndpoint(item.endpoint)) return null;
+              const wireIndex = conductors.indexOf(item.conductor);
+              const start = {x:origin.x, y:origin.y + 62 + wireIndex * 24};
+              const end = endpointPoint(item.endpoint);
+              const midX = origin.x - 20 - wireIndex * 8;
+              const points = [start.x+','+start.y,midX+','+start.y,midX+','+end.y,end.x+','+end.y].join(' ');
+              const appearance = wireColorAppearance(defaultWireColor(item.conductor));
+              return <g key={item.conductor} data-circuit-link={circuit.id} data-conductor={item.conductor}>
                 <polyline points={points} fill="none" stroke="#fff" strokeWidth={7} strokeLinejoin="round" />
                 <polyline points={points} fill="none" stroke={appearance.color} strokeWidth={3} strokeDasharray="8 5" strokeLinejoin="round" />
                 {appearance.stripe && <polyline points={points} fill="none" stroke={appearance.stripe} strokeWidth={3} strokeDasharray="4 9" strokeLinejoin="round" />}
@@ -772,27 +775,20 @@ export function WiringDiagram({
             })}
           </g>;
         })}
-        {floorRoutes.map(({ sheet, route: floorRoute }, index) => {
-          const origin = floorRoutePosition(sheet.id, floorRoute, index), y = origin.y;
-          const fromHere = floorRoute.fromBoardId === board.id;
-          const otherDeviceId = fromHere ? floorRoute.toDeviceId : floorRoute.fromDeviceId;
-          const otherBoardId = fromHere ? floorRoute.toBoardId : floorRoute.fromBoardId;
-          const otherDevice = otherDeviceId ? devicesById.get(otherDeviceId) : undefined;
-          const other = otherDevice ? `${otherDevice.code} · ${otherDevice.name}`
-            : data.boards.find(item => item.id === otherBoardId)?.name ?? '—';
-          const routeLabel = `${sheet.name} · ${other}`;
-          const circuit = data.circuits.find(item => item.id === floorRouteCircuitId(floorRoute, devicesById));
-          const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
-          const conductors = floorConductors(connections);
-          return <g key={`floor-route-${sheet.id}-${floorRoute.id}`} className="wiring-floor-route" data-floor-route-id={floorRoute.id}>
-            <title>{`${t('Alaprajzi nyomvonal')}: ${routeLabel}${circuit ? ` · ${circuit.code}` : ''}`}</title>
-            <rect x={origin.x} y={y} width={300} height={62} rx={6} fill="#f3f8f5" stroke="#638a74" />
-            <text x={origin.x + 12} y={y + 22} fontSize={13} fontWeight={600} fill="#174f3d">{t('Alaprajzi nyomvonal')} · {circuit?.code ?? '—'}</text>
-            <text x={origin.x + 12} y={y + 43} fontSize={12} fill="#365746">{routeLabel.length > 43 ? `${routeLabel.slice(0, 42)}…` : routeLabel}</text>
-            {!connections.length && <text x={origin.x + 288} y={y + 58} textAnchor="end" fontSize={10} fill="#5e7467">{t('Nincs kapocs hozzárendelve')}</text>}
-            <foreignObject className="wiring-device-grip-container" x={origin.x + 270} y={y + 5} width={24} height={20}>
-              <button type="button" className="wiring-device-grip" aria-label={t('Áramkör mozgatása: {route}', {route:routeLabel})}
-                onPointerDown={event => { event.currentTarget.focus({preventScroll:true}); startDrag(event, 'floor-route', JSON.stringify([sheet.id, floorRoute.id]), origin); }}
+        {boardCircuits.map(({ circuit, connection }, index) => {
+          const origin = boardCircuitPosition(circuit.id, connection, index);
+          const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+          const height = Math.max(90, 72 + conductors.length * 24);
+          const circuitLabel = circuit.code + ' · ' + circuit.name;
+          return <g key={'circuit-box-' + circuit.id} className="wiring-circuit" data-circuit-id={circuit.id}>
+            <title>{circuitLabel}</title>
+            <rect x={origin.x} y={origin.y} width={230} height={height} rx={6} fill="#f3f8f5" stroke="#638a74" />
+            <text x={origin.x + 18} y={origin.y + 22} fontSize={13} fontWeight={600} fill="#174f3d">{circuit.code}</text>
+            <text x={origin.x + 18} y={origin.y + 40} fontSize={12} fill="#365746">{circuit.name.length > 24 ? circuit.name.slice(0, 23) + '…' : circuit.name}</text>
+            {(connection.legacyTerminalConflicts?.length || connection.legacyPositionConflict) && <text x={origin.x + 185} y={origin.y + 22} fontSize={14} fontWeight={700} fill="#a52f20"><title>{t('Korábbi kapcsolatok eltérnek; ellenőrizd az áramkör beállításait.')}</title>!</text>}
+            <foreignObject className="wiring-device-grip-container" x={origin.x + 200} y={origin.y + 5} width={24} height={20}>
+              <button type="button" className="wiring-device-grip" aria-label={t('Áramkör mozgatása: {route}', {route:circuitLabel})}
+                onPointerDown={event => { event.currentTarget.focus({preventScroll:true}); startDrag(event, 'circuit', circuit.id, origin); }}
                 onClick={event => { event.preventDefault(); event.stopPropagation(); }}
                 onKeyDown={event => {
                   const step = snapToGrid ? WIRING_GRID_SIZE : 1;
@@ -800,39 +796,40 @@ export function WiringDiagram({
                   const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
                   if (!dx && !dy) return;
                   event.preventDefault(); event.stopPropagation();
-                  patchFloorPosition(sheet.id, floorRoute.id, {x:origin.x + dx, y:origin.y + dy});
+                  patchCircuitPosition(circuit.id, {x:origin.x + dx, y:origin.y + dy});
                 }}><GripHorizontal aria-hidden="true" width={16} height={16}/></button>
             </foreignObject>
-            {conductors.map((conductor, connectionIndex) => {
-              const connection = connections.find(item => item.conductor === conductor);
-              const visible = connection ? localVisibleEndpoint(connection.endpoint) : true;
-              const active = selectedFloorConnector?.sheetId === sheet.id && selectedFloorConnector.routeId === floorRoute.id && selectedFloorConnector.conductor === conductor;
-              const x = origin.x + 23 + connectionIndex * 34;
-              const title = t('{conductor} · {route}: alaprajzi végpont', { conductor, route: routeLabel });
-              const select = () => onSelectFloorConnector?.(sheet.id, floorRoute.id, conductor);
-              const touchKey = JSON.stringify([sheet.id, floorRoute.id, conductor]);
-              return <g key={conductor} role="button" tabIndex={0} aria-label={title} className={`wiring-floor-connector${active ? ' selected' : ''}`} data-conductor={conductor}
+            {conductors.map((conductor, wireIndex) => {
+              const terminal = connection.terminals.find(item => item.conductor === conductor);
+              const visible = terminal ? localVisibleEndpoint(terminal.endpoint) : true;
+              const active = selectedCircuitConnector?.circuitId === circuit.id && selectedCircuitConnector.conductor === conductor;
+              const x = origin.x, y = origin.y + 62 + wireIndex * 24;
+              const conflict = connection.legacyTerminalConflicts?.some(item => item.conductor === conductor);
+              const title = t('{conductor} · {circuit}: áramköri végpont', { conductor, circuit:circuitLabel });
+              const select = () => onSelectCircuitConnector?.(circuit.id, conductor);
+              const touchKey = JSON.stringify([circuit.id, conductor]);
+              return <g key={conductor} role="button" tabIndex={0} aria-label={title} className={'wiring-circuit-connector' + (active ? ' selected' : '')} data-conductor={conductor}
                 onPointerDown={event => {
-                  if (event.pointerType === 'touch') floorTouchStart.current = {key:touchKey,pointerId:event.pointerId,x:event.clientX,y:event.clientY};
+                  if (event.pointerType === 'touch') circuitTouchStart.current = {key:touchKey,pointerId:event.pointerId,x:event.clientX,y:event.clientY};
                 }}
                 onPointerUp={event => {
                   if (event.pointerType !== 'touch') return;
-                  const start = floorTouchStart.current; floorTouchStart.current = undefined;
+                  const start = circuitTouchStart.current; circuitTouchStart.current = undefined;
                   event.preventDefault(); event.stopPropagation();
-                  lastFloorTouch.current = {key:touchKey,time:Date.now()};
+                  lastCircuitTouch.current = {key:touchKey,time:Date.now()};
                   if (start?.key === touchKey && start.pointerId === event.pointerId && Math.hypot(event.clientX-start.x,event.clientY-start.y) <= 8) select();
                 }}
-                onPointerCancel={() => { floorTouchStart.current = undefined; }}
+                onPointerCancel={() => { circuitTouchStart.current = undefined; }}
                 onClick={event => {
                   event.stopPropagation();
-                  if (lastFloorTouch.current?.key === touchKey && Date.now() - lastFloorTouch.current.time < 750) return;
+                  if (lastCircuitTouch.current?.key === touchKey && Date.now() - lastCircuitTouch.current.time < 750) return;
                   select();
                 }}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); select(); } }}>
-                <title>{connection ? `${title} · ${visible ? label(connection.endpoint) : t('Kapocs nem látható a rajzon')}` : title}</title>
+                <title>{terminal ? title + ' · ' + (visible ? label(terminal.endpoint) : t('Kapocs nem látható a rajzon')) : title}</title>
                 <circle cx={x} cy={y} r={14} fill="transparent" />
-                <circle cx={x} cy={y} r={active ? 8 : 6} fill={connection ? (visible ? '#276b50' : '#bf432c') : '#fff'} stroke={active ? '#ed9700' : '#276b50'} strokeWidth={active ? 3 : 2} />
-                <text x={x} y={y - 10} textAnchor="middle" fontSize={11} fontWeight={700} fill={visible ? '#174f3d' : '#a52f20'} pointerEvents="none">{conductor}{visible ? '' : '!'}</text>
+                <circle cx={x} cy={y} r={active ? 8 : 6} fill={terminal ? (visible ? '#276b50' : '#bf432c') : '#fff'} stroke={active ? '#ed9700' : conflict ? '#bf432c' : '#276b50'} strokeWidth={active || conflict ? 3 : 2} />
+                <text x={x + 14} y={y + 4} textAnchor="start" fontSize={11} fontWeight={700} fill={visible && !conflict ? '#174f3d' : '#a52f20'} pointerEvents="none">{conductor}{visible && !conflict ? '' : '!'}</text>
               </g>;
             })}
           </g>;

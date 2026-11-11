@@ -8,6 +8,8 @@ import type { ProjectData } from '../types';
 
 function fixture() {
   const doc = createProject('Protection');
+  // This suite exercises projects saved before circuit-based cabinet connections.
+  delete doc.data.circuitBoardMigration;
   const board = doc.data.boards[0];
   const first = makeDevice('breaker', []); first.electrical = { role:'mcb', poles:['L','N'] };
   const second = makeDevice('breaker', [first]); second.electrical = { role:'mcb', poles:['L','N'] };

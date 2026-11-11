@@ -6,7 +6,7 @@ import { SymbolGlyph } from '../components/Symbol';
 import { APP } from '../config';
 import { catalogEntryId, deviceLabel } from '../catalog';
 import { getBoardIssues } from '../data/boardPlacement';
-import type { Asset, Device, DeviceKind, DeviceVariant, PlanSheet, ProjectDocument } from '../types';
+import type { Asset, Circuit, CircuitBoardConnection, Device, DeviceKind, DeviceVariant, PlanSheet, ProjectDocument } from '../types';
 import { downloadBlob, safeFilename } from './files';
 import { buildSingleLineSvg, cableLabel, circuitCableLabel } from './singleLine';
 import { getBoardConnectionIssues } from '../data/boardConnections';
@@ -15,6 +15,8 @@ import { diagramTiles } from './diagramPages';
 import { getFloorPlanDisplay, getPlanAppearance } from '../data/planAppearance';
 import { floorRouteEndpoint, floorRoutePoints } from '../data/floorRoute';
 import { floorRouteCircuitId } from '../data/floorRouteCircuit';
+import { migrateLegacyCircuitBoardConnections } from '../data/circuitBoard';
+import { circuitBelongsToBoard } from '../data/circuitBoardAssociation';
 import { boardImage } from '../products/boardImage';
 import { loadPhases } from '../data/projectPhases';
 
@@ -105,6 +107,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
   let y = 0;
   const deviceMap = new Map(doc.data.devices.map(device => [device.id, device]));
   const circuitMap = new Map(doc.data.circuits.map(circuit => [circuit.id, circuit]));
+  const boardData = migrateLegacyCircuitBoardConnections(doc.data);
   const iconCache = new Map<string, string>();
   const planRasterCache = new Map<string, Promise<PlanRaster>>();
   const floorPlanDisplay = getFloorPlanDisplay(doc.data);
@@ -401,25 +404,21 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     table(t('{board} · készülékjegyzék', { board: board.name }), ['Sor', 'Kezdőhely', 'Modul', 'Azonosító', 'Készülék', 'Névleges adat', 'Áramkör', 'Típus / modell'], [35, 25, 20, 46, 96, 55, 35, 72], boardRows);
     const accessories = doc.data.devices.filter(device => device.boardId === board.id && device.product?.mounting === 'accessory');
     if (accessories.length) table(t('{board} · tartozékjegyzék', { board: board.name }), ['Azonosító', 'Cikkszám', 'Készülék', 'Mennyiség', 'Megjegyzés'], [35, 45, 104, 30, 170], accessories.map(device => [device.code, device.product!.reference, device.name, `${(device.quantity ?? 1).toLocaleString(locale)} ${t('db')}`, [device.product?.description?.[getLanguage()], device.notes].filter(Boolean).join('\n')]), board.product?.reference);
-    const floorConnections = doc.data.sheets.flatMap(sheet => sheet.routes
-      .filter(route => route.fromBoardId === board.id || route.toBoardId === board.id)
-      .flatMap(route => {
-        const fromBoard = route.fromBoardId === board.id;
-        const device = deviceMap.get((fromBoard ? route.toDeviceId : route.fromDeviceId) ?? '');
-        const otherBoard = doc.data.boards.find(item => item.id === (fromBoard ? route.toBoardId : route.fromBoardId));
-        const otherEnd = device ? `${device.code} · ${device.name}` : otherBoard?.name ?? '?';
-        const circuit = circuitMap.get(floorRouteCircuitId(route, deviceMap) ?? '');
-        const terminals = route.boardTerminals?.filter(item => item.boardId === board.id) ?? [];
-        const prefix = [sheet.name, otherEnd, circuit ? `${circuit.code} · ${circuit.name}` : ''];
-        return terminals.length
-          ? terminals.map(item => [...prefix, item.conductor, wiringEndpointLabel(doc.data, item.endpoint)])
-          : [[...prefix, '', t('Nincs hozzárendelve')]];
-      }));
-    if (floorConnections.length) table(t('{board} · alaprajzi csatlakozások', { board: board.name }),
-      ['Tervlap', 'Másik végpont', 'Áramkör', 'Vezető', 'Kapocs'], [70, 100, 70, 35, 109], floorConnections);
+    const boardCircuits: { circuit:Circuit; connection:CircuitBoardConnection }[] = boardData.circuits.filter(circuit => circuitBelongsToBoard(boardData,circuit,board.id))
+      .map(circuit => ({circuit,connection:circuit.boardConnections?.find(item => item.boardId === board.id) ?? {boardId:board.id,terminals:[]}}));
+    const circuitConnections = boardCircuits.flatMap(({circuit,connection}) => {
+      const prefix = [`${circuit.code} · ${circuit.name}`];
+      const assigned = connection.terminals.map(item => [...prefix, item.conductor, wiringEndpointLabel(boardData,item.endpoint)]);
+      const conflicts = (connection.legacyTerminalConflicts ?? []).map(item => [
+        ...prefix, item.conductor, `${t('Ellenőrizendő')}: ${item.endpoints.map(endpoint => wiringEndpointLabel(boardData,endpoint)).join(' / ')}`
+      ]);
+      return assigned.length || conflicts.length ? [...assigned,...conflicts] : [[...prefix,'',t('Nincs hozzárendelve')]];
+    });
+    if (circuitConnections.length) table(t('{board} · áramköri csatlakozások', { board: board.name }),
+      ['Áramkör', 'Vezető', 'Kapocs'], [140, 50, 194], circuitConnections);
     if (issues.length) table(t('{board} · ellenőrzendő jelzések', { board: board.name }), ['Sor', 'Jelzés'], [55, WIDTH - 55], issues.map(issue => [board.rows.find(row => row.id === issue.rowId)?.name || '', issue.message]));
-    if (board.connections?.length || board.wiring?.wires.length) {
-      const drawing=buildSingleLineSvg(doc.data,board);
+    if (board.connections?.length || board.wiring?.wires.length || boardCircuits.some(item => item.connection.terminals.length)) {
+      const drawing=buildSingleLineSvg(boardData,board);
       // Keep schematic text readable on A3, tiling large diagrams instead of shrinking them.
       const mmPerUnit=.26, tileWidth=WIDTH/mmPerUnit, tileHeight=210/mmPerUnit;
       let tiles:ReturnType<typeof diagramTiles>;
@@ -459,10 +458,6 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     table(t('Eszközjegyzék'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Mag. mm', 'Modell', 'Állapot', 'Megjegyzés'], [43, 54, 30, 24, 20, 47, 27, 139], doc.data.devices.map(device => [device.code, `${device.name}\n${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', String(device.heightMm), [device.model, device.product && !device.model.includes(device.product.reference) ? device.product.reference : ''].filter(Boolean).join('\n'), t(statuses[device.status]), [device.product?.description?.[getLanguage()], device.notes].filter(Boolean).join('\n')]));
     const loadLabels={socket:'Dugalj',lamp:'Világítás',motor:'Motor',other:'Egyéb fogyasztó'};
     table(t('Áramkörjegyzék'), ['Áramkör', 'Megnevezés', 'Védelem', 'Hozzárendelt fogyasztók', 'Kábel', 'Telj. W', 'Megjegyzés'], [25, 65, 35, 74, 60, 25, 100], doc.data.circuits.map(circuit => [circuit.code, [circuit.name,circuit.loadType?t(loadLabels[circuit.loadType]):''].filter(Boolean).join('\n'), circuit.protectionDeviceId ? deviceMap.get(circuit.protectionDeviceId)?.code || '' : '', doc.data.devices.filter(device => device.circuitId === circuit.id).map(device => `${device.code} · ${device.name}`).join('\n'), circuitCableLabel(circuit),circuit.powerW===undefined?'':circuit.powerW.toLocaleString(locale),circuit.notes]));
-    const routeEndName = (deviceId: string | undefined, boardId: string | undefined) =>
-      deviceId ? deviceMap.get(deviceId)?.code || '' : boardId ? doc.data.boards.find(board => board.id === boardId)?.name || '' : '';
-    const routes = doc.data.sheets.flatMap(sheet => sheet.routes.map(route => [sheet.name, route.kind === 'control' ? t('Vezérlés') : t('Tápellátás'), routeEndName(route.fromDeviceId, route.fromBoardId), routeEndName(route.toDeviceId, route.toBoardId), circuitMap.get(floorRouteCircuitId(route, deviceMap) ?? '')?.code || '']));
-    table(t('Kapcsolatjegyzék'), ['Tervlap', 'Kapcsolat', 'Kiinduló pont', 'Célpont', 'Áramkör'], [90, 55, 90, 90, 59], routes);
   } else {
     table(t('Mi hova kerül?'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Állapot'], [43, 128, 70, 55, 88], doc.data.devices.map(device => [device.code, `${device.name} · ${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', t(statuses[device.status])]));
   }

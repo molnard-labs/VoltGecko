@@ -93,6 +93,49 @@ describe('single-line SVG', () => {
   it('retains manual circuit cable descriptions when only structured length is added',()=>{
     expect(circuitCableLabel({id:'c',code:'C',name:'Load',notes:'',color:'#123456',cable:'Existing NYM-J 3×2.5',cableDetails:{lengthM:10}})).toBe('Existing NYM-J 3×2.5 · 10 m');
   });
+  it('draws each canonical circuit once with its actual board terminals independently of floor routes', () => {
+    const {data,board,devices} = fixture();
+    board.connections = [];
+    devices[2].electrical = {poles:['L','N']};
+    board.wiring = {wires:[],infeeds:[],buses:[{id:'neutral',name:'N sín',conductor:'N',capacity:2,position:'bottom',terminalLabels:['','']},
+      {id:'earth',name:'PE sín',conductor:'PE',capacity:2,position:'bottom',terminalLabels:['','']}]};
+    data.circuits = [{id:'c',code:'C1',name:'Konyha',color:'#224466',notes:'',powerW:500,boardConnections:[{
+      boardId:board.id,terminals:[
+        {conductor:'L',endpoint:{kind:'device',deviceId:devices[2].id,side:'bottom',pole:0}},
+        {conductor:'N',endpoint:{kind:'bus',busId:'neutral',terminal:1}},
+        {conductor:'PE',endpoint:{kind:'bus',busId:'earth',terminal:0}},
+      ],
+    }]}];
+    const first = buildSingleLineSvg(data,board).svg;
+    expect(first.match(/data-circuit-id="c"/g)).toHaveLength(1);
+    expect(first).toContain(`data-connection-id="circuit:c:${board.id}:L"`);
+    expect(first).toContain(`data-connection-id="circuit:c:${board.id}:N"`);
+    expect(first).toContain(`data-connection-id="circuit:c:${board.id}:PE"`);
+    expect(first).toContain('N sín · 2 (N)');
+    const portMatches = [...first.matchAll(/data-circuit-port="(L|N|PE)" data-board-id="[^"]+"><circle cx="([\d.]+)" cy="([\d.]+)"/g)];
+    expect(portMatches.map(item=>item[1])).toEqual(['L','N','PE']);
+    expect(new Set(portMatches.map(item=>item[2])).size).toBe(3);
+    const circuitCard = first.match(/<g data-circuit-id="c">[\s\S]*?<\/g><\/g>/)?.[0] ?? '';
+    expect(circuitCard).not.toContain('stroke="#171717" stroke-width="1.4"');
+    data.sheets[0].routes = [{id:'drawing',fromDeviceId:devices[2].id,toDeviceId:devices[3].id,kind:'power',points:[]}];
+    expect(buildSingleLineSvg(data,board).svg).toBe(first);
+    expect(buildProjectSingleLineSvg(data).svg.match(/data-circuit-id="c"/g)).toHaveLength(1);
+  });
+  it('keeps a manual protective association until the active conductor is connected to that device', () => {
+    const {data,board,devices} = fixture();
+    board.connections = [];
+    devices[2].electrical = {poles:['L','N']}; devices[3].electrical = {poles:['L']};
+    board.wiring = {wires:[],infeeds:[],buses:[]};
+    data.circuits = [{id:'c',code:'C1',name:'Circuit',color:'#224466',notes:'',protectionDeviceId:devices[2].id,boardConnections:[{
+      boardId:board.id,terminals:[{conductor:'N',endpoint:{kind:'device',deviceId:devices[2].id,side:'bottom',pole:1}}],
+    }]}];
+    const connection = data.circuits[0].boardConnections![0];
+    expect(buildSingleLineSvg(data,board).svg).toContain('data-connection-id="protection:c"');
+    connection.terminals.push({conductor:'L',endpoint:{kind:'device',deviceId:devices[3].id,side:'bottom',pole:0}});
+    expect(buildSingleLineSvg(data,board).svg).toContain('data-connection-id="protection:c"');
+    connection.terminals[1].endpoint = {kind:'device',deviceId:devices[2].id,side:'bottom',pole:0};
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-connection-id="protection:c"');
+  });
   it('preserves every pole wire, same-device bridge, bus, infeed and cross-board endpoint without inventing direction',()=>{
     const {data,board,devices}=fixture();board.connections=[];
     devices[0].electrical={poles:['L1','L2','L3','N']};devices[1].electrical={poles:['N','PE']};
@@ -117,7 +160,8 @@ describe('single-line SVG', () => {
     devices[2].model = 'Schneider EZ9F57116';
     data.circuits.push({ id: 'circuit', code: 'ÁK1', name: 'Dugaljak', color: '#287c68', notes: '', protectionDeviceId: devices[2].id, cable: 'NYM-J 3 × 2,5 mm²', powerW: 2300 });
     const result = buildSingleLineSvg(data, board);
-    expect(result.svg.match(/data-connection-id=/g)).toHaveLength(4);
+    expect(result.svg.match(/data-connection-id=/g)).toHaveLength(5);
+    expect(result.svg).toContain('data-connection-id="protection:circuit"');
     expect(result.svg.match(/data-device-id=/g)).toHaveLength(4);
     for (const value of ['3 × 400 / 230 V', 'Schneider EZ9F57116', 'NYM-J 3 × 2,5 mm²', '2300 W', 'B16', 'ÁK1 · Dugaljak']) expect(result.svg).toContain(value);
     expect(result.svg).not.toContain(`data-device-id="${devices[4].id}"`);

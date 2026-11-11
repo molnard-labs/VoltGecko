@@ -15,6 +15,9 @@ const CATALOG_DEFINITIONS: CatalogEntry[] = [
   {kind:'main',label:'Főkapcsoló',short:'Q',category:'board',moduleWidth:2,description:'Elosztó főkapcsolója'},
   {kind:'blank',label:'Tartalékhely',short:'T',category:'board',moduleWidth:1,description:'Tervezett tartalékhely'},
   {kind:'custom',label:'Egyedi készülék',short:'X',category:'board',moduleWidth:1,description:'Megadható típus és modulszélesség'},
+  {kind:'custom',variant:'board-terminal',label:'Sorkapocs',short:'XT',category:'board',moduleWidth:29/18,description:'Egyedi sorkapocs'},
+  {kind:'custom',variant:'board-mpcb',label:'Motorvédő',short:'QM',category:'board',moduleWidth:3,description:'Egyedi motorvédő'},
+  {kind:'custom',variant:'board-meter',label:'Fogyasztásmérő',short:'EM',category:'board',moduleWidth:4,description:'Egyedi fogyasztásmérő'},
   {kind:'switch',variant:'switch-double-pole',group:'switches',label:'Kétpólusú kapcsoló',short:'K',category:'floor',description:'Kétpólusú kapcsoló (102)'},
   {kind:'switch',variant:'switch-series',group:'switches',label:'Csillárkapcsoló',short:'K',category:'floor',description:'Kétáramkörös kapcsoló (105)'},
   {kind:'switch',variant:'switch-two-way',group:'switches',label:'Váltókapcsoló',short:'K',category:'floor',description:'Váltókapcsoló (106)'},
@@ -55,5 +58,8 @@ export function makeDevice(kind: DeviceKind, devices: Device[], variant?: Device
   const e = CATALOG.find(c => c.kind === kind && c.variant === variant);
   if (!e) throw new Error(t('Ismeretlen készülékváltozat.'));
   let n = 1; while (devices.some(d => d.code === `${e.short}${n}`)) n++;
-  return { id:uid(),code:`${e.short}${n}`,name:e.label,kind,...(variant?{variant}:{}),room:'',heightMm:kind==='outlet'?300:kind==='switch'?1100:0,model:'',notes:'',status:'planned',moduleWidth:e.moduleWidth,photoIds:[],rating:kind==='breaker'?'B16':kind==='rcd'?'40 A / 30 mA':'' };
+  const electrical = variant==='board-terminal' ? {role:'terminal' as const,poles:['L1','L1'] as const}
+    : variant==='board-mpcb' ? {role:'mpcb' as const,poles:['L1','L2','L3'] as const}
+    : variant==='board-meter' ? {role:'meter' as const,poles:['L1','L2','L3','N'] as const} : undefined;
+  return { id:uid(),code:`${e.short}${n}`,name:e.label,kind,...(variant?{variant}:{}),room:'',heightMm:kind==='outlet'?300:kind==='switch'?1100:0,model:'',notes:'',status:'planned',moduleWidth:e.moduleWidth,photoIds:[],rating:kind==='breaker'?'B16':kind==='rcd'?'40 A / 30 mA':'',...(electrical?{electrical:{...electrical,poles:[...electrical.poles]}}:{}) };
 }

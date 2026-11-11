@@ -3,3 +3,10 @@
 .wiring-floating-tools button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;max-width:100%;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:0 3px 16px #1f3e2b2a;font:inherit;cursor:pointer}
 .wiring-floating-tools button:hover{background:var(--accent-subtle)}
 .wiring-floating-tools button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.wiring-grid-button{width:44px;height:44px;min-width:44px;min-height:44px}
+.wiring-grid-button[aria-pressed="true"]{background:var(--accent-subtle);color:var(--accent)}
+.board-context-host{overflow-x:auto;scrollbar-width:thin}
+.board-editor-actions,.wiring-actions{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+.board-context-host .wiring-actions{order:-1}
+.board-editor-actions select{width:auto;max-width:min(180px,40vw);min-height:44px}
+.board-editor-actions button{width:44px;height:44px;flex-shrink:0}

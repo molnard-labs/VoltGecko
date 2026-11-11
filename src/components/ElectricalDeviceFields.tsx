@@ -29,7 +29,13 @@ export function ElectricalDeviceFields({device,data,onChange}:{device:Device;dat
     const nonIdentity=order.some((pole,index)=>pole!==index);
     const deviceWires=[
       ...data.boards.flatMap(board=>board.wiring?.wires??[]).flatMap(wire=>[wire.from,wire.to]),
-      ...data.sheets.flatMap(sheet=>sheet.routes).flatMap(route=>(route.boardTerminals??[]).map(item=>item.endpoint)),
+      ...data.sheets.flatMap(sheet=>sheet.routes).flatMap(route=>(route.boardTerminals??[])
+        .filter(item=>!data.circuitBoardMigration || route.legacyUnassignedBoards?.includes(item.boardId))
+        .map(item=>item.endpoint)),
+      ...data.circuits.flatMap(circuit=>(circuit.boardConnections??[]).flatMap(connection=>[
+        ...connection.terminals.map(item=>item.endpoint),
+        ...(connection.legacyTerminalConflicts??[]).flatMap(conflict=>conflict.endpoints),
+      ])),
     ].filter(endpoint=>endpoint.kind==='device'&&endpoint.deviceId===device.id);
     if(visible.length!==current.length&&nonIdentity){
       if(visible.length>current.length){

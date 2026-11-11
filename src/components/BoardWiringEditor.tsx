@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Cable, Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, Cable, Grid3X3, Plus, Trash2 } from 'lucide-react';
 import { t, getLocale } from '../i18n';
-import { uid, makeDevice } from '../catalog';
-import { placeBoardDevice } from '../data/boardPlacement';
+import { uid } from '../catalog';
 import { defaultWireColor } from '../data/wireColors';
 import { loadPhases } from '../data/projectPhases';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
-import { assignFloorRouteTerminal } from '../data/floorRouteProtection';
+import { assignCircuitBoardTerminal, setCircuitBoardPosition } from '../data/circuitBoard';
 import {
   assignConnectedPhase,
   endpointConductor,
@@ -25,7 +25,7 @@ import { WiringDiagram, useWiringDiagram } from './board-wiring/WiringDiagram';
 import { EndpointSelect, WirePanel } from './board-wiring/WirePanel';
 import type { WireEstimate } from './board-wiring/WirePanel';
 import { SourcesPanel } from './board-wiring/SourcesPanel';
-import { FloorBoardRoutes } from './FloorBoardRoutes';
+import { BoardCircuitPanel } from './BoardCircuitPanel';
 import { insertWireBend } from './board-wiring/wireEditing';
 import './board-wiring/wire-toolbar.css';
 
@@ -37,10 +37,11 @@ interface Props {
   onNotify: (message: string) => void;
   onSelect: (id: string | null) => void;
   onPlaceDevice: (deviceId: string, rowId: string, start: number) => void;
+  actionHost?: HTMLElement | null;
 }
 const EMPTY: BoardWiring = { buses: [], wires: [], infeeds: [] };
 
-export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify, onSelect, onPlaceDevice }: Props) {
+export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify, onSelect, onPlaceDevice, actionHost }: Props) {
   const [fromValue, setFromValue] = useState('');
   const [toValue, setToValue] = useState('');
   const [continuousWiring, setContinuousWiring] = useState(false);
@@ -48,7 +49,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   const [wireId, setWireId] = useState<string>();
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState<WireEstimate>();
-  const [floorConnector, setFloorConnector] = useState<{ sheetId: string; routeId: string; conductor: Conductor }>();
+  const [circuitConnector, setCircuitConnector] = useState<{ circuitId: string; conductor: Conductor }>();
   const wiring = board.wiring ?? EMPTY;
   const locale = getLocale();
   const issues = useMemo(() => getWiringIssues(data, board), [data, board, locale]);
@@ -56,13 +57,13 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   useEffect(() => {
     if (selectedId) setWireId(undefined);
   }, [selectedId]);
-  useEffect(() => { setFloorConnector(undefined); }, [board.id]);
+  useEffect(() => { setCircuitConnector(undefined); }, [board.id]);
   useEffect(() => {
-    if (!floorConnector) return;
-    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') { setFloorConnector(undefined); setError(''); } };
+    if (!circuitConnector) return;
+    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') { setCircuitConnector(undefined); setError(''); } };
     window.addEventListener('keydown', cancel);
     return () => window.removeEventListener('keydown', cancel);
-  }, [floorConnector]);
+  }, [circuitConnector]);
   const selectDevice = (id: string | null) => {
     setWireId(undefined);
     onSelect(id);
@@ -102,34 +103,34 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
       const source = value.infeeds.find((s) => s.id === id);
       if (source) Object.assign(source, patch);
     });
-  const connectFloorEndpoint = (selection: { sheetId: string; routeId: string; conductor: Conductor }, endpoint: WiringEndpoint) => {
+  const connectCircuitEndpoint = (selection: { circuitId: string; conductor: Conductor }, endpoint: WiringEndpoint) => {
     if (!isBoardRouteTerminalCompatible(data, board.id, selection.conductor, endpoint)) {
       const message = t('Ez a kapocs nem ehhez az elosztóhoz vagy vezetőhöz tartozik. Válassz megfelelő kapcsot.');
       setError(message); onNotify(message); return false;
     }
-    const next = assignFloorRouteTerminal(data, selection.sheetId, selection.routeId, board.id, selection.conductor, endpoint);
+    const next = assignCircuitBoardTerminal(data, selection.circuitId, board.id, selection.conductor, endpoint);
     if (next === data) {
-      const message = t('A nyomvonal vagy a kapocs megváltozott. Válaszd ki újra a végpontokat.');
+      const message = t('Az áramkör vagy a kapocs megváltozott. Válaszd ki újra a végpontokat.');
       setError(message); onNotify(message); return false;
     }
-    onChange(next); setFloorConnector(undefined); setFromValue(''); setToValue(''); setError('');
-    onNotify(t('Az alaprajzi vezető a kiválasztott kapocshoz került.'));
+    onChange(next); setCircuitConnector(undefined); setFromValue(''); setToValue(''); setError('');
+    onNotify(t('Az áramkör vezetője a kiválasztott kapocshoz került.'));
     return true;
   };
-  const selectFloorConnector = (sheetId: string, routeId: string, conductor: Conductor) => {
-    const selection = { sheetId, routeId, conductor };
-    if (floorConnector?.sheetId === sheetId && floorConnector.routeId === routeId && floorConnector.conductor === conductor) {
-      setFloorConnector(undefined); setError(''); return;
+  const selectCircuitConnector = (circuitId: string, conductor: Conductor) => {
+    const selection = { circuitId, conductor };
+    if (circuitConnector?.circuitId === circuitId && circuitConnector.conductor === conductor) {
+      setCircuitConnector(undefined); setError(''); return;
     }
     const first = !toValue ? parseEndpoint(fromValue) : undefined;
     setWireId(undefined); onSelect(null); setError('');
-    if (first && connectFloorEndpoint(selection, first)) return;
-    setFromValue(''); setToValue(''); setFloorConnector(selection);
+    if (first && connectCircuitEndpoint(selection, first)) return;
+    setFromValue(''); setToValue(''); setCircuitConnector(selection);
   };
   const selectEndpoint = (endpoint: WiringEndpoint) => {
     onSelect(null);
     setError('');
-    if (floorConnector) { connectFloorEndpoint(floorConnector, endpoint); return; }
+    if (circuitConnector) { connectCircuitEndpoint(circuitConnector, endpoint); return; }
     if (!fromValue || (toValue && !continuousWiring)) {
       setFromValue(encodeEndpoint(endpoint));
       setToValue('');
@@ -140,26 +141,6 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   const notifyError = (message: string) => {
     setError(message);
     onNotify(message);
-  };
-  const addPreset = (role: 'terminal' | 'mpcb' | 'meter') => {
-    const next = structuredClone(data),
-      device = makeDevice('custom', next.devices),
-      prefix = role === 'terminal' ? 'XT' : role === 'mpcb' ? 'QM' : 'EM';
-    let number = 1;
-    while (next.devices.some((item) => item.code === `${prefix}${number}`)) number++;
-    device.code = `${prefix}${number}`;
-    device.name = t(role === 'terminal' ? 'Sorkapocs' : role === 'mpcb' ? 'Motorvédő' : 'Fogyasztásmérő');
-    device.moduleWidth = role === 'terminal' ? 29 / 18 : role === 'mpcb' ? 3 : 4;
-    device.electrical =
-      role === 'terminal'
-        ? { role, poles: ['L1', 'L1'] }
-        : { role, poles: role === 'meter' ? ['L1', 'L2', 'L3', 'N'] : ['L1', 'L2', 'L3'] };
-    next.devices.push(device);
-    const target = next.boards.find((item) => item.id === board.id)!;
-    if (!target.rows.length)
-      target.rows.push({ id: uid(), name: t('{number}. sor', { number: 1 }), capacity: 12, placements: [] });
-    onChange(placeBoardDevice(next, target.id, target.rows[0].id, device.id));
-    selectDevice(device.id);
   };
   const addWire = () => {
     if (!from || !to) return;
@@ -190,19 +171,24 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
       }}
     />
   );
-  const patchFloorPosition = (sheetId: string, routeId: string, point: Point) => {
-    const current = data.sheets.find(sheet => sheet.id === sheetId)?.routes.find(route => route.id === routeId);
-    if (!current || (current.fromBoardId !== board.id && current.toBoardId !== board.id)) return;
-    const previous = current.boardPositions?.find(position => position.boardId === board.id);
+  const patchCircuitPosition = (circuitId: string, point: Point) => {
+    const current = data.circuits.find(circuit => circuit.id === circuitId);
+    if (!current) return;
+    const previous = current.boardConnections?.find(connection => connection.boardId === board.id)?.position;
     if (previous?.x === point.x && previous.y === point.y) return;
-    const next = structuredClone(data);
-    const route = next.sheets.find(sheet => sheet.id === sheetId)!.routes.find(item => item.id === routeId)!;
-    route.boardPositions = [...(route.boardPositions ?? []).filter(position => position.boardId !== board.id), { boardId:board.id, ...point }];
-    onChange(next);
+    onChange(setCircuitBoardPosition(data, circuitId, board.id, point));
   };
-  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, patchFloorPosition, placeDevice: onPlaceDevice, snapToGrid });
+  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, patchCircuitPosition, placeDevice: onPlaceDevice, snapToGrid });
   const selectedWire = wiring.wires.find((wire) => wire.id === wireId);
   const selectedRoute = selectedWire ? diagram.route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  const tools = <div className="wiring-actions">
+    <button type="button" className="icon-button wiring-grid-button" aria-label={t('Rácshoz illesztés')} title={t('Rácshoz illesztés')} aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}><Grid3X3 size={19}/></button>
+    <button type="button" className="icon-button wiring-grid-button" aria-label={t('Folyamatos bekötés')} title={t('Folyamatos bekötés')} aria-pressed={continuousWiring} onClick={() => { setContinuousWiring(value => !value); setError(''); }}><Cable size={19}/></button>
+    {selectedWire && selectedRoute.length >= 2 && <>
+      <button type="button" className="icon-button wiring-grid-button" aria-label={t('Töréspont hozzáadása')} title={t('Töréspont hozzáadása')} onClick={() => patchWire(selectedWire.id, { points:insertWireBend(selectedRoute,snapToGrid) })}><Plus size={19}/></button>
+      <button type="button" className="icon-button wiring-grid-button" aria-label={t('Kijelölt vezeték törlése')} title={t('Kijelölt vezeték törlése')} onClick={() => { update(value => { value.wires = value.wires.filter(wire => wire.id !== selectedWire.id); }); setWireId(undefined); }}><Trash2 size={19}/></button>
+    </>}
+  </div>;
 
   return (
     <section className="board-wiring board-wiring-unified" data-testid="board-wiring">
@@ -214,32 +200,11 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
         </span>
       </div>
         <div className="wiring-content">
-          <FloorBoardRoutes data={data} board={board} onChange={onChange}/>
-          <div className="row-actions wiring-presets">
-            <button className="quiet" onClick={() => addPreset('terminal')}>
-              <Plus size={14} />
-              {t('Sorkapocs hozzáadása')}
-            </button>
-            <button className="quiet" onClick={() => addPreset('mpcb')}>
-              <Plus size={14} />
-              {t('Motorvédő hozzáadása')}
-            </button>
-            <button className="quiet" onClick={() => addPreset('meter')}>
-              <Plus size={14} />
-              {t('Fogyasztásmérő hozzáadása')}
-            </button>
-          </div>
-          <p className="subtle">
-            {t('A készülékeket a fogantyújukkal mozgasd. A kapcsokra kattintva vezetékeket hozhatsz létre.')}
-          </p>
-          {floorConnector && <p className="field-note" role="status">
-            {t('Kiválasztott alaprajzi vezető: {conductor}. Kattints az elosztó megfelelő kapcsára.', { conductor: floorConnector.conductor })}
-            {' '}<button type="button" className="quiet" onClick={() => { setFloorConnector(undefined); setError(''); }}>{t('Mégse')}</button>
+          {circuitConnector && <p className="field-note" role="status">
+            {t('Kiválasztott áramköri vezető: {conductor}. Kattints az elosztó megfelelő kapcsára.', { conductor: circuitConnector.conductor })}
+            {' '}<button type="button" className="quiet" onClick={() => { setCircuitConnector(undefined); setError(''); }}>{t('Mégse')}</button>
           </p>}
-          <div className="row-actions wiring-grid-control">
-            <button type="button" className="quiet wiring-mode-toggle" aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}>{t('Rácshoz illesztés')}</button>
-            {snapToGrid && <span className="subtle">{t('Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.')}</span>}
-          </div>
+          {actionHost ? createPortal(tools, actionHost) : tools}
           <div className="wiring-diagram-container">
           <WiringDiagram
             data={data}
@@ -256,45 +221,17 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             onPlaceDevice={onPlaceDevice}
             onNotify={onNotify}
             onReconnectEndpoint={(id, side, endpoint) => patchWire(id, { [side]: endpoint })}
-            selectedFloorConnector={floorConnector}
-            onSelectFloorConnector={selectFloorConnector}
+            selectedCircuitConnector={circuitConnector}
+            onSelectCircuitConnector={selectCircuitConnector}
           />
-          {selectedWire && selectedRoute.length >= 2 && (
-            <div className="wiring-floating-tools">
-              <button
-                type="button"
-                aria-label={t('Töréspont hozzáadása')}
-                title={t('Töréspont hozzáadása')}
-                onClick={() => patchWire(selectedWire.id, { points: insertWireBend(selectedRoute, snapToGrid) })}
-              >
-                <Plus size={18} aria-hidden="true" />
-                <span>{t('Töréspont hozzáadása')}</span>
-              </button>
-            </div>
-          )}
           </div>
+          <BoardCircuitPanel data={data} board={board} onChange={onChange}/>
           <p className="subtle">
             {t(
               'Válassz két konkrét csatlakozópontot a rajzon vagy a listákban, majd hozd létre a vezetéket. A kattintási sorrend szabad.'
             )}
           </p>
-          <div className="row-actions">
-            <button
-              className="quiet wiring-mode-toggle"
-              aria-pressed={continuousWiring}
-              onClick={() => {
-                setContinuousWiring((value) => !value);
-                setError('');
-              }}
-            >
-              {t('Folyamatos bekötés')}
-            </button>
-            {continuousWiring && (
-              <span className="subtle">
-                {t('A kezdőpont megmarad a vezeték létrehozása után. Válassz új végpontot a következő bekötéshez.')}
-              </span>
-            )}
-          </div>
+          {continuousWiring && <p className="subtle">{t('A kezdőpont megmarad a vezeték létrehozása után. Válassz új végpontot a következő bekötéshez.')}</p>}
           <div className="wiring-connect-form">
             {endpointSelect(fromValue, setFromValue, t('Vezeték kezdőpontja'))}
             {endpointSelect(toValue, setToValue, t('Vezeték végpontja'))}

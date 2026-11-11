@@ -23,6 +23,6 @@ test('highlights all devices and routes on the selected device circuit and updat
   await expect(routes.first()).not.toHaveClass(/floor-route-circuit-highlighted/);
   await page.locator('.view-tabs').getByRole('button', { name: 'Áramkörök', exact: true }).click();
   const card = page.locator('.circuit-card').filter({ has: page.getByLabel('ÁK2 azonosítója') });
-  await expect(card.locator('.circuit-routes')).toContainText('Nyomvonalak az alaprajzon (1)');
-  await expect(card.locator('.circuit-routes')).toContainText('Vezérlés');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.circuit-routes')).toHaveCount(0);
 });
