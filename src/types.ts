@@ -54,7 +54,7 @@ export type WiringEndpoint =
 export interface BoardRouteTerminal { boardId:string; conductor:Conductor; endpoint:WiringEndpoint }
 /** An independent position for this route's symbol in each connected board drawing. */
 export interface BoardRoutePosition extends Point { boardId:string }
-export interface CircuitBoardTerminal { conductor:Conductor; endpoint:WiringEndpoint }
+export interface CircuitBoardTerminal { conductor:Conductor; endpoint:WiringEndpoint; points?:Point[] }
 export interface CircuitBoardConnection { boardId:string; terminals:CircuitBoardTerminal[]; position?:Point; hidden?:boolean; legacyTerminalConflicts?:{conductor:Conductor; endpoints:WiringEndpoint[]}[]; legacyPositionConflict?:boolean; legacyPositionOptions?:Point[] }
 export interface BoardWire {
   id:string; from:WiringEndpoint; to:WiringEndpoint; color?:string; colorPattern?:'green-yellow'; cable?:CableDetails;

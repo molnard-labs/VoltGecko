@@ -4,7 +4,7 @@ import { decodeProject, encodeProject, validateProject } from './archive';
 import { createProject, deleteBoard, deleteDevice } from './project';
 import { circuitProtectionCandidates, reconcileAutoProtections } from './floorRouteProtection';
 import { getPhaseLoads, getWiringIssues } from './boardWiring';
-import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, deleteCircuit, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, migrateLegacyCircuitBoardConnections, preserveSingleBoardCircuits, pruneCircuitBoardConnections, setCircuitBoardPosition, setCircuitBoardVisible } from './circuitBoard';
+import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, deleteCircuit, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, migrateLegacyCircuitBoardConnections, preserveSingleBoardCircuits, pruneCircuitBoardConnections, setCircuitBoardPosition, setCircuitBoardTerminalPoints, setCircuitBoardVisible } from './circuitBoard';
 
 function fixture() {
   const doc = createProject('Test');
@@ -22,6 +22,32 @@ function fixture() {
 }
 
 describe('circuit-based board connections', () => {
+  it('retains individual conductor routes through endpoint changes, archive export and import', async () => {
+    const {doc,board,terminal} = fixture();
+    const points = [{x:20,y:40},{x:50,y:40}];
+    const connected = assignCircuitBoardTerminal(doc.data,'c',board.id,'L',terminal);
+    const routed = setCircuitBoardTerminalPoints(connected,'c',board.id,'L',points);
+    expect(connected.circuits[0].boardConnections![0].terminals[0].points).toBeUndefined();
+    expect(routed.circuits[0].boardConnections![0].terminals[0].points).toEqual(points);
+    const reconnected = assignCircuitBoardTerminal(routed,'c',board.id,'L',{...terminal,side:'top'});
+    expect(reconnected.circuits[0].boardConnections![0].terminals[0]).toMatchObject({points,endpoint:{...terminal,side:'top'}});
+    const restored = await decodeProject(await encodeProject({...doc,data:reconnected}));
+    expect(restored.data.circuits[0].boardConnections![0].terminals[0].points).toEqual(points);
+    const reset = setCircuitBoardTerminalPoints(restored.data,'c',board.id,'L',undefined);
+    expect(reset.circuits[0].boardConnections![0].terminals[0].points).toBeUndefined();
+    const deleted = assignCircuitBoardTerminal(reconnected,'c',board.id,'L');
+    expect(deleted.circuits[0].boardConnections![0].terminals).toEqual([]);
+  });
+  it('rejects malformed and oversized saved circuit wire points', () => {
+    const {doc,board,terminal} = fixture();
+    const connected = assignCircuitBoardTerminal(doc.data,'c',board.id,'L',terminal);
+    expect(setCircuitBoardTerminalPoints(connected,'c',board.id,'L',[{x:Infinity,y:0}])).toBe(connected);
+    const malformed = structuredClone(connected);
+    malformed.circuits[0].boardConnections![0].terminals[0].points = [{x:NaN,y:0}];
+    expect(() => validateProject({...doc,data:malformed})).toThrow();
+    malformed.circuits[0].boardConnections![0].terminals[0].points = Array(10_001).fill({x:0,y:0});
+    expect(() => validateProject({...doc,data:malformed})).toThrow();
+  });
   it('shows the single-board circuits and permits independent explicit hiding and restoring', () => {
     const {doc,board} = fixture();
     expect(getCircuitBoardConnections(doc.data,board.id)).toHaveLength(1);

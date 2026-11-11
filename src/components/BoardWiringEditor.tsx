@@ -6,7 +6,7 @@ import { uid } from '../catalog';
 import { defaultWireColor } from '../data/wireColors';
 import { loadPhases } from '../data/projectPhases';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
-import { assignCircuitBoardTerminal, setCircuitBoardPosition } from '../data/circuitBoard';
+import { assignCircuitBoardTerminal, setCircuitBoardPosition, setCircuitBoardTerminalPoints } from '../data/circuitBoard';
 import {
   assignConnectedPhase,
   endpointConductor,
@@ -57,7 +57,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   useEffect(() => {
     if (selectedId) setWireId(undefined);
   }, [selectedId]);
-  useEffect(() => { setCircuitConnector(undefined); }, [board.id]);
+  useEffect(() => { setCircuitConnector(undefined); setWireId(undefined); }, [board.id]);
   useEffect(() => {
     if (!circuitConnector) return;
     const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') { setCircuitConnector(undefined); setError(''); } };
@@ -80,6 +80,21 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
     onChange(next);
   };
   const patchWire = (id: string, patch: Partial<BoardWire>) => {
+    const circuit = diagram.circuitWireById.get(id);
+    if (circuit) {
+      let next = data;
+      if (patch.from) {
+        if (!isBoardRouteTerminalCompatible(data, board.id, circuit.conductor, patch.from)) {
+          const message = t('Ez a kapocs nem ehhez az elosztóhoz vagy vezetőhöz tartozik. Válassz megfelelő kapcsot.');
+          setError(message); onNotify(message); return;
+        }
+        next = assignCircuitBoardTerminal(next, circuit.circuitId, board.id, circuit.conductor, patch.from);
+        setError('');
+      }
+      if ('points' in patch) next = setCircuitBoardTerminalPoints(next, circuit.circuitId, board.id, circuit.conductor, patch.points);
+      if (next !== data) onChange(next);
+      return;
+    }
     const original = wiring.wires.find((wire) => wire.id === id);
     if (!original) return;
     const from = patch.from ?? original.from, to = patch.to ?? original.to;
@@ -179,14 +194,21 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
     onChange(setCircuitBoardPosition(data, circuitId, board.id, point));
   };
   const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, patchCircuitPosition, placeDevice: onPlaceDevice, snapToGrid });
-  const selectedWire = wiring.wires.find((wire) => wire.id === wireId);
-  const selectedRoute = selectedWire ? diagram.route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  const selectedWire = diagram.editableWires.find((wire) => wire.id === wireId);
+  const selectedRoute = selectedWire ? diagram.route(selectedWire, diagram.editableWires.indexOf(selectedWire)) : [];
+  const selectedCircuit = selectedWire && diagram.circuitWireById.get(selectedWire.id);
+  const deleteWire = (id: string) => {
+    const circuit = diagram.circuitWireById.get(id);
+    if (circuit) onChange(assignCircuitBoardTerminal(data, circuit.circuitId, board.id, circuit.conductor));
+    else update(value => { value.wires = value.wires.filter(wire => wire.id !== id); });
+    setWireId(undefined);
+  };
   const tools = <div className="wiring-actions">
     <button type="button" className="icon-button wiring-grid-button" aria-label={t('Rácshoz illesztés')} title={t('Rácshoz illesztés')} aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}><Grid3X3 size={19}/></button>
     <button type="button" className="icon-button wiring-grid-button" aria-label={t('Folyamatos bekötés')} title={t('Folyamatos bekötés')} aria-pressed={continuousWiring} onClick={() => { setContinuousWiring(value => !value); setError(''); }}><Cable size={19}/></button>
     {selectedWire && selectedRoute.length >= 2 && <>
       <button type="button" className="icon-button wiring-grid-button" aria-label={t('Töréspont hozzáadása')} title={t('Töréspont hozzáadása')} onClick={() => patchWire(selectedWire.id, { points:insertWireBend(selectedRoute,snapToGrid) })}><Plus size={19}/></button>
-      <button type="button" className="icon-button wiring-grid-button" aria-label={t('Kijelölt vezeték törlése')} title={t('Kijelölt vezeték törlése')} onClick={() => { update(value => { value.wires = value.wires.filter(wire => wire.id !== selectedWire.id); }); setWireId(undefined); }}><Trash2 size={19}/></button>
+      <button type="button" className="icon-button wiring-grid-button" aria-label={t('Kijelölt vezeték törlése')} title={t('Kijelölt vezeték törlése')} onClick={() => deleteWire(selectedWire.id)}><Trash2 size={19}/></button>
     </>}
   </div>;
 
@@ -196,7 +218,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
         <Cable size={19} />
         <span>{t('Elosztó és huzalozás')}</span>
         <span className="small-tag">
-          {wiring.wires.length} {t('vezeték')}
+          {diagram.editableWires.length} {t('vezeték')}
         </span>
       </div>
         <div className="wiring-content">
@@ -264,18 +286,14 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             <WirePanel
               data={data}
               wires={wiring.wires}
+              selectedCircuitWire={selectedWire && selectedCircuit ? {wire:selectedWire,label:`${data.circuits.find(item => item.id === selectedCircuit.circuitId)?.code ?? ''} · ${selectedCircuit.conductor}`} : undefined}
               selectedWireId={wireId}
               selectedRoute={selectedRoute}
               snapToGrid={snapToGrid}
               endpoints={endpoints}
               onSelectWire={selectWire}
               onPatchWire={patchWire}
-              onDeleteWire={(id) => {
-                update((value) => {
-                  value.wires = value.wires.filter((wire) => wire.id !== id);
-                });
-                setWireId(undefined);
-              }}
+              onDeleteWire={deleteWire}
               onClearError={clearError}
               onNotify={onNotify}
               estimate={estimate}

@@ -1,4 +1,5 @@
 const translations: Record<string, string> = {
+  'Nyomvonal': 'Route',
   'Korábbi kapcsolatok eltérnek; ellenőrizd az áramkör beállításait.': 'Previous connections differ; review the circuit settings.',
   'Áramkörök kapcsai': 'Circuit terminals',
   'Ehhez az elosztóhoz még nincs áramkör hozzárendelve.': 'No circuits are assigned to this distribution board yet.',

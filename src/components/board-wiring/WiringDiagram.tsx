@@ -28,6 +28,8 @@ import { roundedWirePath } from './wirePath';
 import './wire-endpoints.css';
 import { moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend, WIRING_GRID_SIZE } from './wireEditing';
 
+export const circuitWireId = (circuitId: string, conductor: Conductor) => 'circuit-wire:' + JSON.stringify([circuitId, conductor]);
+
 // Resolve only bundled catalog images by both manufacturer and reference. The
 // catalog uses embedded image data, so the drawing's SVG export remains portable.
 const catalogImages = new Map(
@@ -204,13 +206,65 @@ export function useWiringDiagram(
             : point.y < other.y ? 'down' : 'up';
     return { point, direction };
   };
+  // Circuits belong to the cabinet independently of floor-plan geometry.
+  // Their terminals face the cabinet on the left side of each box.
+  const boardCircuits = getCircuitBoardConnections(data, board.id);
+  const boardCircuitPosition = (circuitId: string, connection: CircuitBoardConnection, index: number): Point => {
+    if (drag?.kind === 'circuit' && drag.id === circuitId) return drag.point;
+    // Keep the first circuit in the initial horizontal viewport, below the DIN
+    // rows. A right-hand gutter would hide every circuit behind horizontal scroll.
+    const rowsBottom = board.rows.length ? 130 + (board.rows.length - 1) * 230 + 100 : 80;
+    const savedBusY = (bus: BoardBus) => {
+      const row = board.rows.findIndex(item => item.id === bus.rowId);
+      return bus.offset?.y ?? (row >= 0 ? 130 + row * 230 + (bus.position === 'top' ? -56 : 154)
+        : bus.position === 'top' ? 55 : layoutHeight - 48);
+    };
+    const occupiedBottom = Math.max(rowsBottom,
+      ...wiring.buses.map(bus => savedBusY(bus) + 38),
+      ...wiring.infeeds.map((source, sourceIndex) => (source.position?.y ?? 110 + sourceIndex * 145) + 58));
+    return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 250 };
+  };
+  const circuitConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
+    const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
+      wiring.buses.some(bus => bus.conductor === 'PEN') ||
+      [...devicePositions.keys()].some(id => effectiveDevicePoles(devicesById.get(id)!).includes('PEN'));
+    const candidates: Conductor[] = [...projectPhases(data), 'N', 'PE'];
+    if (hasPen) candidates.push('PEN');
+    for (const connection of connections) if (!candidates.includes(connection.conductor)) candidates.push(connection.conductor);
+    return candidates;
+  };
+  // Circuit boxes are real drawing obstacles. Their terminals sit on the
+  // left edge, so the router can approach each connection without crossing
+  // the box (including while its owner is being dragged).
+  for (const [index, {circuit, connection}] of boardCircuits.entries()) {
+    const origin = boardCircuitPosition(circuit.id, connection, index);
+    const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+    obstacles.push({...origin, width:230, height:Math.max(90, 72 + conductors.length * 24)});
+  }
+  const circuitWireById = new Map<string, {circuitId:string; conductor:Conductor; point:Point}>();
+  const circuitWires: BoardWire[] = [];
+  for (const [index, {circuit, connection}] of boardCircuits.entries()) {
+    const origin = boardCircuitPosition(circuit.id, connection, index);
+    const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+    for (const item of connection.terminals) {
+      const endpoint = item.endpoint;
+      const local = endpoint.kind === 'device' ? devicePositions.has(endpoint.deviceId)
+        : endpoint.kind === 'bus' ? busesById.has(endpoint.busId) : infeedsById.has(endpoint.infeedId);
+      if (!local) continue;
+      let id = circuitWireId(circuit.id, item.conductor);
+      while (wiring.wires.some(wire => wire.id === id) || circuitWireById.has(id)) id = ':' + id;
+      circuitWireById.set(id, {circuitId:circuit.id, conductor:item.conductor, point:{x:origin.x, y:origin.y + 62 + conductors.indexOf(item.conductor) * 24}});
+      circuitWires.push({id,from:endpoint,to:endpoint,points:item.points,...defaultWireColor(item.conductor)});
+    }
+  }
+  const editableWires = [...wiring.wires, ...circuitWires];
   const routes = new Map<string, Point[]>();
   const route = (wire: BoardWire, _index: number): Point[] => {
     const cached = routes.get(wire.id);
     if (cached) return cached;
-    const first = endpointPoint(wire.from), last = endpointPoint(wire.to);
+    const first = endpointPoint(wire.from), last = circuitWireById.get(wire.id)?.point ?? endpointPoint(wire.to);
     const storedPoints = wire.points ?? automaticWireRoute(
-      routingTerminal(wire.from, last), routingTerminal(wire.to, first), obstacles, wire.id
+      routingTerminal(wire.from, last), circuitWireById.has(wire.id) ? {point:last,direction:'left'} : routingTerminal(wire.to, first), obstacles, wire.id
     ).slice(1, -1);
     // Normalize saved paths visually without mutating project data. This also
     // makes the displayed bend indices match what a later drag will edit.
@@ -334,7 +388,7 @@ export function useWiringDiagram(
         patchInfeed(value.id, { labelOffset: { x: value.point.x - origin.x, y: value.point.y - origin.y - 12 } });
       }
     } else {
-      const wire = wiring.wires.find((w) => w.id === value.id);
+      const wire = editableWires.find((w) => w.id === value.id);
       if (!wire) return;
       const index = wiring.wires.indexOf(wire);
       if (value.kind === 'label') {
@@ -377,28 +431,14 @@ export function useWiringDiagram(
     }
   });
   // A live preview must not change its own coordinate origin or scroll extent.
-  // Circuits belong to the cabinet independently of floor-plan geometry.
-  // Their terminals face the cabinet on the left side of each box.
-  const boardCircuits = getCircuitBoardConnections(data, board.id);
-  const boardCircuitPosition = (circuitId: string, connection: CircuitBoardConnection, index: number): Point => {
-    if (drag?.kind === 'circuit' && drag.id === circuitId) return drag.point;
-    // Keep the first circuit in the initial horizontal viewport, below the DIN
-    // rows. A right-hand gutter would hide every circuit behind horizontal scroll.
-    const rowsBottom = board.rows.length ? 130 + (board.rows.length - 1) * 230 + 100 : 80;
-    const savedBusY = (bus: BoardBus) => {
-      const row = board.rows.findIndex(item => item.id === bus.rowId);
-      return bus.offset?.y ?? (row >= 0 ? 130 + row * 230 + (bus.position === 'top' ? -56 : 154)
-        : bus.position === 'top' ? 55 : layoutHeight - 48);
-    };
-    const occupiedBottom = Math.max(rowsBottom,
-      ...wiring.buses.map(bus => savedBusY(bus) + 38),
-      ...wiring.infeeds.map((source, sourceIndex) => (source.position?.y ?? 110 + sourceIndex * 145) + 58));
-    return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 250 };
-  };
   for (const [index, item] of boardCircuits.entries()) {
     const position = boardCircuitPosition(item.circuit.id, item.connection, index);
     minX = Math.min(minX, position.x - 100); minY = Math.min(minY, position.y - 25);
     maxX = Math.max(maxX, position.x + 250); maxY = Math.max(maxY, position.y + 260);
+  }
+  for (const wire of circuitWires) for (const point of route(wire, 0)) {
+    minX = Math.min(minX, point.x - 18); minY = Math.min(minY, point.y - 18);
+    maxX = Math.max(maxX, point.x + 18); maxY = Math.max(maxY, point.y + 18);
   }
   for (const [index, source] of wiring.infeeds.entries()) {
     const origin = sourceOrigin(source, index);
@@ -425,6 +465,10 @@ export function useWiringDiagram(
     externalEndpoints,
     boardCircuits,
     boardCircuitPosition,
+    circuitConductors,
+    circuitWires,
+    circuitWireById,
+    editableWires,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -530,6 +574,9 @@ export function WiringDiagram({
     externalEndpoints,
     boardCircuits,
     boardCircuitPosition,
+    circuitConductors,
+    circuitWireById,
+    editableWires,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -547,8 +594,8 @@ export function WiringDiagram({
   } = diagram;
   const label = (endpoint: WiringEndpoint) => wiringEndpointLabel(data, endpoint);
   const invalidDevices = new Set(getBoardIssues(board, data.devices).map((issue) => issue.deviceId));
-  const selectedWire = wiring.wires.find((wire) => wire.id === selectedWireId);
-  const selectedRoute = selectedWire ? route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
+  const selectedWire = editableWires.find((wire) => wire.id === selectedWireId);
+  const selectedRoute = selectedWire ? route(selectedWire, editableWires.indexOf(selectedWire)) : [];
   const [selectedBend, setSelectedBend] = useState<{ wireId: string; index: number; point: Point }>();
   useEffect(() => { setSelectedBend(undefined); }, [selectedWireId]);
   // Inserting another point can shift indices. Keep the selection attached to
@@ -607,15 +654,6 @@ export function WiringDiagram({
   ];
   const localVisibleEndpoint = (endpoint: WiringEndpoint) =>
     !externalEndpoints.has(encodeEndpoint(endpoint)) && visibleEndpoints.some(item => sameEndpoint(item, endpoint));
-  const circuitConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
-    const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
-      wiring.buses.some(bus => bus.conductor === 'PEN') ||
-      [...devicePositions.keys()].some(id => effectiveDevicePoles(devicesById.get(id)!).includes('PEN'));
-    const candidates: Conductor[] = [...projectPhases(data), 'N', 'PE'];
-    if (hasPen) candidates.push('PEN');
-    for (const connection of connections) if (!candidates.includes(connection.conductor)) candidates.push(connection.conductor);
-    return candidates;
-  };
   const endpointAt = (clientX: number, clientY: number): WiringEndpoint | undefined => {
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return undefined;
@@ -632,7 +670,7 @@ export function WiringDiagram({
     if (event.button !== 0 || !selectedWire || drag || deviceDrag) return;
     event.preventDefault(); event.stopPropagation();
     const value: EndpointDrag = { id: selectedWire.id, side, pointerId: event.pointerId,
-      start: { x: event.clientX, y: event.clientY }, point: endpointPoint(selectedWire[side]), moved: false };
+      start: { x: event.clientX, y: event.clientY }, point: side === 'to' && circuitWireById.has(selectedWire.id) ? circuitWireById.get(selectedWire.id)!.point : endpointPoint(selectedWire[side]), moved: false };
     endpointDragRef.current = value; setEndpointDrag(value);
     svgRef.current?.setPointerCapture(event.pointerId);
   };
@@ -652,7 +690,7 @@ export function WiringDiagram({
     stopEndpointDrag();
     if (target) onReconnectEndpoint(current.id, current.side, target);
     else if (!current.moved) {
-      const wire = wiring.wires.find((item) => item.id === current.id);
+      const wire = editableWires.find((item) => item.id === current.id);
       if (wire) onSelectEndpoint(wire[current.side]);
     }
     return true;
@@ -755,25 +793,45 @@ export function WiringDiagram({
             </text>
           </g>
         ))}
-        {boardCircuits.map(({ circuit, connection }, index) => {
-          const origin = boardCircuitPosition(circuit.id, connection, index);
-          const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
-          return <g key={'circuit-links-' + circuit.id} aria-hidden="true" pointerEvents="none">
-            {connection.terminals.map(item => {
-              if (!localVisibleEndpoint(item.endpoint)) return null;
-              const wireIndex = conductors.indexOf(item.conductor);
-              const start = {x:origin.x, y:origin.y + 62 + wireIndex * 24};
-              const end = endpointPoint(item.endpoint);
-              const midX = origin.x - 20 - wireIndex * 8;
-              const points = [start.x+','+start.y,midX+','+start.y,midX+','+end.y,end.x+','+end.y].join(' ');
-              const appearance = wireColorAppearance(defaultWireColor(item.conductor));
-              return <g key={item.conductor} data-circuit-link={circuit.id} data-conductor={item.conductor}>
-                <polyline points={points} fill="none" stroke="#fff" strokeWidth={7} strokeLinejoin="round" />
-                <polyline points={points} fill="none" stroke={appearance.color} strokeWidth={3} strokeDasharray="8 5" strokeLinejoin="round" />
-                {appearance.stripe && <polyline points={points} fill="none" stroke={appearance.stripe} strokeWidth={3} strokeDasharray="4 9" strokeLinejoin="round" />}
-              </g>;
-            })}
-          </g>;
+        {editableWires.map((wire, index) => {
+          const circuitLink = circuitWireById.get(wire.id);
+          const currentRoute = route(wire, index).map((point, routeIndex, all) =>
+            endpointDrag?.id === wire.id && endpointDrag.moved && ((endpointDrag.side === 'from' && routeIndex === 0) || (endpointDrag.side === 'to' && routeIndex === all.length - 1)) ? endpointDrag.point : point);
+          const points = currentRoute.map((point) => `${point.x},${point.y}`).join(' ');
+          const appearance = wireColorAppearance(wire, endpointConductor(data, wire.from) ?? 'L');
+          const path = roundedWirePath(currentRoute);
+          return (
+            <g key={wire.id} className={`wiring-wire ${selectedWireId === wire.id ? 'selected' : ''}`} data-circuit-link={circuitLink?.circuitId} data-conductor={circuitLink?.conductor}>
+              <polyline
+                className="wiring-wire-hit"
+                points={points}
+                onClick={() => onSelectWire(wire.id)}
+                role="button"
+                tabIndex={0}
+                aria-label={t('Vezeték: {from} → {to}', { from: label(wire.from), to: circuitLink ? `${data.circuits.find(item => item.id === circuitLink.circuitId)?.code ?? ''} · ${circuitLink.conductor}` : label(wire.to) })}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelectWire(wire.id);
+                  }
+                }}
+              />
+              <path className="wiring-wire-outline" d={path} />
+              <path
+                className="wiring-wire-line"
+                d={path}
+                stroke={appearance.color}
+              />
+              {appearance.stripe && (
+                <path
+                  className="wiring-wire-line wiring-wire-stripe"
+                  d={path}
+                  stroke={appearance.stripe}
+                  strokeDasharray="7 7"
+                />
+              )}
+            </g>
+          );
         })}
         {boardCircuits.map(({ circuit, connection }, index) => {
           const origin = boardCircuitPosition(circuit.id, connection, index);
@@ -833,45 +891,6 @@ export function WiringDiagram({
               </g>;
             })}
           </g>;
-        })}
-        {wiring.wires.map((wire, index) => {
-          const currentRoute = route(wire, index).map((point, routeIndex, all) =>
-            endpointDrag?.id === wire.id && endpointDrag.moved && ((endpointDrag.side === 'from' && routeIndex === 0) || (endpointDrag.side === 'to' && routeIndex === all.length - 1)) ? endpointDrag.point : point);
-          const points = currentRoute.map((point) => `${point.x},${point.y}`).join(' ');
-          const appearance = wireColorAppearance(wire, endpointConductor(data, wire.from) ?? 'L');
-          const path = roundedWirePath(currentRoute);
-          return (
-            <g key={wire.id} className={`wiring-wire ${selectedWireId === wire.id ? 'selected' : ''}`}>
-              <polyline
-                className="wiring-wire-hit"
-                points={points}
-                onClick={() => onSelectWire(wire.id)}
-                role="button"
-                tabIndex={0}
-                aria-label={t('Vezeték: {from} → {to}', { from: label(wire.from), to: label(wire.to) })}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelectWire(wire.id);
-                  }
-                }}
-              />
-              <path className="wiring-wire-outline" d={path} />
-              <path
-                className="wiring-wire-line"
-                d={path}
-                stroke={appearance.color}
-              />
-              {appearance.stripe && (
-                <path
-                  className="wiring-wire-line wiring-wire-stripe"
-                  d={path}
-                  stroke={appearance.stripe}
-                  strokeDasharray="7 7"
-                />
-              )}
-            </g>
-          );
         })}
         {[...devicePositions].map(([id, position], deviceIndex) => {
           const device = devicesById.get(id)!;
@@ -1087,7 +1106,7 @@ export function WiringDiagram({
               startDrag(event, 'segment', selectedWire.id, { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }, index, selectedRoute);
             }} />;
         })}
-        {selectedWire && (['from', 'to'] as const).map((side) => {
+        {selectedWire && (circuitWireById.has(selectedWire.id) ? (['from'] as const) : (['from', 'to'] as const)).map((side) => {
           const point = endpointDrag?.id === selectedWire.id && endpointDrag.side === side && endpointDrag.moved
             ? endpointDrag.point : endpointPoint(selectedWire[side]);
           return <circle key={side} className="wiring-endpoint-handle" data-testid={`wire-endpoint-${side}`}

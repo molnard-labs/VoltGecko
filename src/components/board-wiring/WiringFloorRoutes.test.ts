@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { makeDevice } from '../../catalog';
 import { createProject } from '../../data/project';
+import { wireSegmentCrossesObstacle } from '../../data/boardWireRouting';
 import type { Board, BoardWiring, ProjectData } from '../../types';
 import { WiringDiagram, useWiringDiagram } from './WiringDiagram';
 
@@ -22,6 +23,8 @@ function fixture() {
   const board = data.boards[0];
   const breaker = makeDevice('breaker', []);
   breaker.boardId = board.id;
+  breaker.moduleWidth = 1;
+  breaker.electrical = { role:'mcb', poles:['L'] };
   const outlet = makeDevice('outlet', [breaker]);
   data.devices.push(breaker, outlet);
   board.rows[0].placements.push({ deviceId: breaker.id, start: 0 });
@@ -47,11 +50,33 @@ describe('circuit connections on the wiring diagram', () => {
     expect(first).toContain('data-circuit-link="circuit" data-conductor="L"');
     expect(first).not.toContain('data-floor-route-id');
     expect(first).toContain('Dugaljak');
-    const points = (markup: string) => markup.match(/data-circuit-link="circuit"[^>]*>\s*<polyline points="([^"]+)/)?.[1];
-    expect(points(first)).toBeDefined();
+    const points = (markup: string) => markup.match(/data-circuit-link="circuit"[^>]*>\s*<polyline class="wiring-wire-hit" points="([^"]+)/)?.[1]
+      .split(' ').map(pair => pair.split(',').map(Number));
+    const firstRoute = points(first);
+    expect(firstRoute?.[0]).toEqual([101,230]);
     board.rows[0].placements[0].start = 2;
-    expect(points(render())).not.toEqual(points(first));
+    const movedRoute = points(render());
+    expect(movedRoute?.[0]).toEqual([193,230]);
+    expect(movedRoute?.at(-1)).toEqual(firstRoute?.at(-1));
     expect(board.wiring?.wires ?? []).toHaveLength(0);
+  });
+
+  it('automatically routes the connection outside its circuit box and into its left terminal', () => {
+    const { data, board } = fixture();
+    const connection = data.circuits[0].boardConnections![0];
+    for (const id of ['circuit','circuit1','circuit2','circuit3','circuit4','circuit5','circuit6']) for (const position of [{x:100,y:265},{x:180,y:300},{x:20,y:300},{x:300,y:270},{x:-20,y:270}]) {
+      data.circuits[0].id = id;
+      connection.position = position;
+      const markup = renderToStaticMarkup(createElement(Drawing, {data, board}));
+      const raw = markup.match(/data-circuit-link="[^"]+"[^>]*>\s*<polyline class="wiring-wire-hit" points="([^"]+)/)?.[1];
+      expect(raw).toBeDefined();
+      const points = raw!.split(' ').map(pair => { const [x,y] = pair.split(',').map(Number); return {x,y}; });
+      const box = {...position,width:230,height:144};
+      expect(points.at(-1)).toEqual({x:position.x,y:position.y+62});
+      expect(points.at(-2)!.y).toBe(points.at(-1)!.y);
+      expect(points.at(-2)!.x).toBeLessThan(points.at(-1)!.x);
+      for (let i = 1; i < points.length; i++) expect(wireSegmentCrossesObstacle(points[i-1],points[i],box), JSON.stringify({id,position,points})).toBe(false);
+    }
   });
 
   it('keeps an unplaced terminal visible as a warning without drawing a false link', () => {

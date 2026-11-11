@@ -56,6 +56,7 @@ export interface WireEstimate {
 interface Props {
   data: ProjectData;
   wires: BoardWire[];
+  selectedCircuitWire?: { wire: BoardWire; label: string };
   selectedWireId?: string;
   selectedRoute: Point[];
   snapToGrid: boolean;
@@ -69,9 +70,91 @@ interface Props {
   onEstimateChange: (estimate: WireEstimate) => void;
 }
 
+interface WireRouteEditorProps {
+  selectedWire: BoardWire;
+  selectedRoute: Point[];
+  snapToGrid: boolean;
+  onPatchWire: Props['onPatchWire'];
+  onNotify: Props['onNotify'];
+  showLabelOffset?: boolean;
+}
+
+/** The same orthogonal route controls work for cabinet and circuit wires. */
+function WireRouteEditor({ selectedWire, selectedRoute, snapToGrid, onPatchWire, onNotify, showLabelOffset = true }: WireRouteEditorProps) {
+  return <>
+          <details open>
+            <summary>{t(showLabelOffset ? 'Nyomvonal és felirat helye' : 'Nyomvonal')}</summary>
+            <p className="subtle">{t('A rajzon húzd a pontokat vagy szakaszokat a vezeték alakításához. A töréspontokat itt is törölheted.')}</p>
+            {selectedRoute.slice(1, -1).map((point, index) => (
+              <div className="wiring-coordinate" key={index}>
+                <span>{t('{number}. töréspont', { number: index + 1 })}</span>
+                {(['x', 'y'] as const).map((axis) => (
+                  <label key={axis}>
+                    {axis}
+                    <input
+                      aria-label={t('{number}. töréspont {axis}', { number: index + 1, axis })}
+                      type="number"
+                      value={point[axis]}
+                      onChange={(e) => {
+                        const next = { ...point, [axis]: Number(e.target.value) };
+                        onPatchWire(selectedWire.id, { points: moveWireBend(selectedRoute, index + 1, next, snapToGrid).route.slice(1, -1) });
+                      }}
+                    />
+                  </label>
+                ))}
+                <button
+                  className="icon-button"
+                  aria-label={t('{number}. töréspont törlése', { number: index + 1 })}
+                  onClick={() => {
+                    const points = removeWireBend(selectedRoute, index, snapToGrid);
+                    if (points.length === selectedRoute.length - 2 && points.every((point, i) => point.x === selectedRoute[i + 1].x && point.y === selectedRoute[i + 1].y)) {
+                      onNotify(t('A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.'));
+                    } else onPatchWire(selectedWire.id, { points });
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            {showLabelOffset && <div className="wiring-coordinate">
+              <span>{t('Felirat helye')}</span>
+              {(['x', 'y'] as const).map((axis) => (
+                <label key={axis}>
+                  {axis}
+                  <input
+                    aria-label={t('Felirat {axis}', { axis })}
+                    type="number"
+                    value={selectedWire.labelOffset?.[axis] ?? 0}
+                    onChange={(e) =>
+                      onPatchWire(selectedWire.id, {
+                        labelOffset: {
+                          x: selectedWire.labelOffset?.x ?? 0,
+                          y: selectedWire.labelOffset?.y ?? 0,
+                          [axis]: Number(e.target.value)
+                        }
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>}
+          </details>
+          <div className="row-actions">
+            <button
+              className="quiet"
+              onClick={() => onPatchWire(selectedWire.id, showLabelOffset ? { points: undefined, labelOffset: undefined } : { points: undefined })}
+            >
+              <RotateCcw size={14} />
+              {t('Nyomvonal alaphelyzetbe')}
+            </button>
+          </div>
+  </>;
+}
+
 export function WirePanel({
   data,
   wires,
+  selectedCircuitWire,
   selectedWireId,
   selectedRoute,
   snapToGrid,
@@ -84,7 +167,7 @@ export function WirePanel({
   estimate,
   onEstimateChange
 }: Props) {
-  const selectedWire = wires.find((wire) => wire.id === selectedWireId);
+  const selectedWire = selectedCircuitWire?.wire ?? wires.find((wire) => wire.id === selectedWireId);
   const selectedColor = selectedWire
     ? wireColorAppearance(selectedWire, endpointConductor(data, selectedWire.from) ?? 'L')
     : undefined;
@@ -128,7 +211,7 @@ export function WirePanel({
   return (
     <div className="wiring-panel">
       <h4>{t('Vezetékek')}</h4>
-      {!wires.length && <p className="subtle">{t('Még nincs részletes vezeték.')}</p>}
+      {!wires.length && !selectedCircuitWire && <p className="subtle">{t('Még nincs részletes vezeték.')}</p>}
       <div className="wiring-wire-list">
         {wires.map((wire) => (
           <button
@@ -145,7 +228,18 @@ export function WirePanel({
           </button>
         ))}
       </div>
-      {selectedWire && (
+      {selectedWire && (selectedCircuitWire ? (
+        <div className="wiring-wire-editor">
+          <strong>{label(selectedWire.from)} → {selectedCircuitWire.label}</strong>
+          {endpointSelect(encodeEndpoint(selectedWire.from), (value) => {
+            if (value) onPatchWire(selectedWire.id, { from: parseEndpoint(value)! });
+          }, t('Kijelölt vezeték kezdőpontja'))}
+          <WireRouteEditor selectedWire={selectedWire} selectedRoute={selectedRoute} snapToGrid={snapToGrid} onPatchWire={onPatchWire} onNotify={onNotify} showLabelOffset={false}/>
+          <div className="row-actions">
+            <button className="danger-button" onClick={() => onDeleteWire(selectedWire.id)}><Trash2 size={14}/>{t('Vezeték törlése')}</button>
+          </div>
+        </div>
+      ) : (
         <div className="wiring-wire-editor">
           <strong>
             {label(selectedWire.from)} → {label(selectedWire.to)}
@@ -260,71 +354,8 @@ export function WirePanel({
                   'Feszültségesés-becsléshez add meg a gyártói ellenállást, a hosszt és a kapcsolódó készülék névleges áramát.'
                 )}
           </p>
-          <details open>
-            <summary>{t('Nyomvonal és felirat helye')}</summary>
-            <p className="subtle">{t('A rajzon húzd a pontokat vagy szakaszokat a vezeték alakításához. A töréspontokat itt is törölheted.')}</p>
-            {selectedRoute.slice(1, -1).map((point, index) => (
-              <div className="wiring-coordinate" key={index}>
-                <span>{t('{number}. töréspont', { number: index + 1 })}</span>
-                {(['x', 'y'] as const).map((axis) => (
-                  <label key={axis}>
-                    {axis}
-                    <input
-                      aria-label={t('{number}. töréspont {axis}', { number: index + 1, axis })}
-                      type="number"
-                      value={point[axis]}
-                      onChange={(e) => {
-                        const next = { ...point, [axis]: Number(e.target.value) };
-                        onPatchWire(selectedWire.id, { points: moveWireBend(selectedRoute, index + 1, next, snapToGrid).route.slice(1, -1) });
-                      }}
-                    />
-                  </label>
-                ))}
-                <button
-                  className="icon-button"
-                  aria-label={t('{number}. töréspont törlése', { number: index + 1 })}
-                  onClick={() => {
-                    const points = removeWireBend(selectedRoute, index, snapToGrid);
-                    if (points.length === selectedRoute.length - 2 && points.every((point, i) => point.x === selectedRoute[i + 1].x && point.y === selectedRoute[i + 1].y)) {
-                      onNotify(t('A töréspont nem törölhető: a két végpont között legalább egy sarok szükséges.'));
-                    } else onPatchWire(selectedWire.id, { points });
-                  }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            <div className="wiring-coordinate">
-              <span>{t('Felirat helye')}</span>
-              {(['x', 'y'] as const).map((axis) => (
-                <label key={axis}>
-                  {axis}
-                  <input
-                    aria-label={t('Felirat {axis}', { axis })}
-                    type="number"
-                    value={selectedWire.labelOffset?.[axis] ?? 0}
-                    onChange={(e) =>
-                      onPatchWire(selectedWire.id, {
-                        labelOffset: {
-                          x: selectedWire.labelOffset?.x ?? 0,
-                          y: selectedWire.labelOffset?.y ?? 0,
-                          [axis]: Number(e.target.value)
-                        }
-                      })
-                    }
-                  />
-                </label>
-              ))}
-            </div>
-          </details>
+          <WireRouteEditor selectedWire={selectedWire} selectedRoute={selectedRoute} snapToGrid={snapToGrid} onPatchWire={onPatchWire} onNotify={onNotify}/>
           <div className="row-actions">
-            <button
-              className="quiet"
-              onClick={() => onPatchWire(selectedWire.id, { points: undefined, labelOffset: undefined })}
-            >
-              <RotateCcw size={14} />
-              {t('Nyomvonal alaphelyzetbe')}
-            </button>
             <button
               className="danger-button"
               onClick={() => {
@@ -336,7 +367,7 @@ export function WirePanel({
             </button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

@@ -404,6 +404,10 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
           if (typeof terminal.conductor !== 'string' || !conductors.has(terminal.conductor)) fail('ismeretlen vezetőfunkció.');
           if (conductorsUsed.has(terminal.conductor)) fail('egy áramköri vezetőhöz csak egy kapocs tartozhat.');
           conductorsUsed.add(terminal.conductor);
+          if (terminal.points !== undefined) {
+            array(terminal.points, 'Áramköri vezeték töréspontjai', 10_000);
+            for (const item of terminal.points) { object(item, 'Áramköri vezeték töréspontja'); point(item, 'Áramköri vezeték töréspontja'); }
+          }
         }
         if (connection.legacyTerminalConflicts !== undefined) {
           array(connection.legacyTerminalConflicts, 'Korábbi kapocsütközések', 7);

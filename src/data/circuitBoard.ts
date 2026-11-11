@@ -85,12 +85,26 @@ export function setCircuitBoardPosition(data: ProjectData, circuitId: string, bo
 export function assignCircuitBoardTerminal(data: ProjectData, circuitId: string, boardId: string, conductor:Conductor, endpoint?:WiringEndpoint): ProjectData {
   if (endpoint && !isBoardRouteTerminalCompatible(data,boardId,conductor,endpoint)) return data;
   const next = updateConnection(data,circuitId,boardId,connection => {
+    const existing = connection.terminals.find(item => item.conductor === conductor);
     connection.terminals = connection.terminals.filter(item => item.conductor !== conductor);
-    if (endpoint) connection.terminals.push({conductor,endpoint});
+    if (endpoint) connection.terminals.push({...existing,conductor,endpoint});
     const conflicts = connection.legacyTerminalConflicts?.filter(item => item.conductor !== conductor);
     if (conflicts?.length) connection.legacyTerminalConflicts = conflicts; else delete connection.legacyTerminalConflicts;
   });
   return endpoint && live.has(conductor) ? syncCircuitProtection(next,circuitId) : reconcileAutoProtections(next);
+}
+
+/** Save only the interior route points, separately for each circuit conductor. */
+export function setCircuitBoardTerminalPoints(data:ProjectData, circuitId:string, boardId:string, conductor:Conductor, points?:Point[]):ProjectData {
+  const terminal = data.circuits.find(item => item.id === circuitId)?.boardConnections
+    ?.find(item => item.boardId === boardId)?.terminals.find(item => item.conductor === conductor);
+  if (!terminal || (points && (points.length > 10_000 || points.some(point =>
+    !Number.isFinite(point.x) || !Number.isFinite(point.y) || Math.abs(point.x) > 1_000_000_000 || Math.abs(point.y) > 1_000_000_000)))) return data;
+  return updateConnection(data,circuitId,boardId,connection => {
+    const target = connection.terminals.find(item => item.conductor === conductor)!;
+    if (points === undefined) delete target.points;
+    else target.points = points.map(point => ({x:point.x,y:point.y}));
+  });
 }
 
 /** Copy only unambiguous historical route metadata; original routes are retained unchanged. */
