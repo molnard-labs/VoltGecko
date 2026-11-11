@@ -10,7 +10,7 @@ const noop = () => {};
 function Drawing({ data, board }: { data: ProjectData; board: Board }) {
   const wiring: BoardWiring = board.wiring ?? { wires: [], buses: [], infeeds: [] };
   const diagram = useWiringDiagram(data, board, wiring, {
-    snapToGrid: false, patchWire: noop, patchBus: noop, patchInfeed: noop, placeDevice: noop,
+    snapToGrid: false, patchWire: noop, patchBus: noop, patchInfeed: noop, patchFloorPosition: noop, placeDevice: noop,
   });
   return createElement(WiringDiagram, { data, board, wiring, diagram,
     selectedDeviceId: null, onPlaceDevice: noop, onSelectWire: noop, onSelectDevice: noop,

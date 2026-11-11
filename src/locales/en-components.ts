@@ -1,4 +1,6 @@
 const translations: Record<string, string> = {
+  'Áramkör mozgatása: {route}': 'Move circuit: {route}',
+  'Betáplálás mozgatása: {name}': 'Move supply: {name}',
   'A(z) {circuit} áramkörhöz több védelmi készülék kapcsolódik. Válaszd ki a megfelelőt.': 'Multiple protective devices are associated with circuit {circuit}. Choose the appropriate device.',
   'A(z) {circuit} áramkörhöz másik védelmi készülék van megadva: {device}.': 'Circuit {circuit} already has another protective device: {device}.',
   'Védelmi készülék: {device}': 'Protective device: {device}',

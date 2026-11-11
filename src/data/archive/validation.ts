@@ -426,6 +426,19 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
       }
       reference(route.circuitId, circuits, 'Kapcsolat áramköre', true);
       reference(route.explicitCircuitId, circuits, 'Kapcsolat kiválasztott áramköre', true);
+      if (route.boardPositions !== undefined) {
+        array(route.boardPositions, 'Elosztói nyomvonalpozíciók', 2);
+        const positioned = new Set<string>();
+        for (const position of route.boardPositions) {
+          object(position, 'Elosztói nyomvonalpozíció');
+          reference(position.boardId, boards, 'Kapcsolat elosztója');
+          if (position.boardId !== route.fromBoardId && position.boardId !== route.toBoardId)
+            fail('a nyomvonalpozíció elosztójának a kapcsolat végpontján kell lennie.');
+          if (positioned.has(position.boardId as string)) fail('egy nyomvonalnak elosztónként egyetlen pozíciója lehet.');
+          positioned.add(position.boardId as string);
+          point(position, 'Elosztói nyomvonalpozíció');
+        }
+      }
       if (route.boardTerminals !== undefined) {
         array(route.boardTerminals, 'Elosztói kapcsok', 14);
         const assigned = new Set<string>();

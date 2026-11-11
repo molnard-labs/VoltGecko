@@ -14,7 +14,7 @@ import {
   getPhaseLoads,
   balanceUnassignedPhases
 } from '../data/boardWiring';
-import type { Board, BoardBus, BoardInfeed, BoardWire, BoardWiring, Conductor, ProjectData, WiringEndpoint } from '../types';
+import type { Board, BoardBus, BoardInfeed, BoardWire, BoardWiring, Conductor, Point, ProjectData, WiringEndpoint } from '../types';
 import {
   encodeEndpoint,
   getEndpointOptions,
@@ -190,7 +190,17 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
       }}
     />
   );
-  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, placeDevice: onPlaceDevice, snapToGrid });
+  const patchFloorPosition = (sheetId: string, routeId: string, point: Point) => {
+    const current = data.sheets.find(sheet => sheet.id === sheetId)?.routes.find(route => route.id === routeId);
+    if (!current || (current.fromBoardId !== board.id && current.toBoardId !== board.id)) return;
+    const previous = current.boardPositions?.find(position => position.boardId === board.id);
+    if (previous?.x === point.x && previous.y === point.y) return;
+    const next = structuredClone(data);
+    const route = next.sheets.find(sheet => sheet.id === sheetId)!.routes.find(item => item.id === routeId)!;
+    route.boardPositions = [...(route.boardPositions ?? []).filter(position => position.boardId !== board.id), { boardId:board.id, ...point }];
+    onChange(next);
+  };
+  const diagram = useWiringDiagram(data, board, wiring, { patchWire, patchBus, patchInfeed, patchFloorPosition, placeDevice: onPlaceDevice, snapToGrid });
   const selectedWire = wiring.wires.find((wire) => wire.id === wireId);
   const selectedRoute = selectedWire ? diagram.route(selectedWire, wiring.wires.indexOf(selectedWire)) : [];
 

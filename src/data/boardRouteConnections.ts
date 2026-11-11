@@ -27,6 +27,7 @@ export function isBoardRouteTerminalCompatible(data: ProjectData, boardId: strin
 /** Remove only references whose objects or physical terminals no longer exist. */
 export function pruneInvalidBoardRouteTerminals(data: ProjectData): ProjectData {
   const circuits = new Set(data.circuits.map(circuit => circuit.id));
+  const boards = new Set(data.boards.map(board => board.id));
   let changed = false;
   const sheets = data.sheets.map(sheet => {
     let sheetChanged = false;
@@ -34,13 +35,17 @@ export function pruneInvalidBoardRouteTerminals(data: ProjectData): ProjectData 
       const terminals = route.boardTerminals?.filter(terminal =>
         (terminal.boardId === route.fromBoardId || terminal.boardId === route.toBoardId) &&
         isBoardRouteTerminalPresent(data, terminal.boardId, terminal.endpoint));
+      const positions = route.boardPositions?.filter(position => boards.has(position.boardId) &&
+        (position.boardId === route.fromBoardId || position.boardId === route.toBoardId));
       const missingCircuit = !!route.explicitCircuitId && !circuits.has(route.explicitCircuitId);
-      if (!missingCircuit && terminals?.length === route.boardTerminals?.length) return route;
+      if (!missingCircuit && terminals?.length === route.boardTerminals?.length && positions?.length === route.boardPositions?.length) return route;
       sheetChanged = true;
       const next = { ...route };
       if (missingCircuit) delete next.explicitCircuitId;
       if (terminals?.length) next.boardTerminals = terminals;
       else delete next.boardTerminals;
+      if (positions?.length) next.boardPositions = positions;
+      else delete next.boardPositions;
       return next;
     });
     if (!sheetChanged) return sheet;

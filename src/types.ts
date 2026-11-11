@@ -19,7 +19,7 @@ export interface Placement extends Point { deviceId: string; rotation: number }
 /** Location of an existing distribution board on a drawing sheet. */
 export interface FloorBoardPlacement extends Point { boardId: string }
 /** Each end refers to exactly one device or distribution board. */
-export interface Route { id: string; fromDeviceId?: string; fromBoardId?: string; toDeviceId?: string; toBoardId?: string; kind: 'power' | 'control'; circuitId?: string; explicitCircuitId?: string; boardTerminals?: BoardRouteTerminal[]; points: Point[] }
+export interface Route { id: string; fromDeviceId?: string; fromBoardId?: string; toDeviceId?: string; toBoardId?: string; kind: 'power' | 'control'; circuitId?: string; explicitCircuitId?: string; boardTerminals?: BoardRouteTerminal[]; boardPositions?: BoardRoutePosition[]; points: Point[] }
 export interface Annotation extends Point { id: string; text: string; kind?: 'text'; fontSize?: number; color?: string }
 export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; boardPlacements?: FloorBoardPlacement[]; routes: Route[]; annotations: Annotation[] }
 export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; protectionAuto?: boolean; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
@@ -52,6 +52,8 @@ export type WiringEndpoint =
   | {kind:'infeed'; infeedId:string; pole:number};
 /** The selected cabinet terminal for one conductor of an incoming floor route. */
 export interface BoardRouteTerminal { boardId:string; conductor:Conductor; endpoint:WiringEndpoint }
+/** An independent position for this route's symbol in each connected board drawing. */
+export interface BoardRoutePosition extends Point { boardId:string }
 export interface BoardWire {
   id:string; from:WiringEndpoint; to:WiringEndpoint; color?:string; colorPattern?:'green-yellow'; cable?:CableDetails;
   points?:Point[]; label?:string; labelOffset?:Point;
