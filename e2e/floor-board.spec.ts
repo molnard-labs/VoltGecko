@@ -20,8 +20,10 @@ test('places, moves, saves and opens the chosen distribution board from the floo
   await expect(placeBoard).toHaveAttribute('aria-pressed', 'true');
   await page.getByLabel('Elhelyezendő elosztó', { exact:true }).selectOption({ label:'Műhely elosztó' });
   await page.locator('.floor-svg').click({ position:{x:420,y:300} });
-  const marker = page.getByRole('button', { name:'Elosztó megnyitása: Műhely elosztó' });
+  const marker = page.getByRole('button', { name:'Elosztó kijelölése: Műhely elosztó' });
   await expect(marker).toBeVisible();
+  await page.locator('.floor-svg').click({ position:{x:15,y:15} });
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toHaveCount(0);
   const initial = await marker.getAttribute('transform');
   const box = await marker.boundingBox();
   if (!box) throw new Error('Board marker missing');
@@ -47,6 +49,9 @@ test('places, moves, saves and opens the chosen distribution board from the floo
     expect(content.items.map(item => 'str' in item ? item.str : '').join(' ')).toContain('Műhely elosztó');
   } finally { await loading.destroy(); }
   await marker.click();
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toBeVisible();
+  await expect(page.locator('.floor-svg')).toBeVisible();
+  await marker.dblclick();
   await expect(page.getByLabel('Aktív elosztó', { exact:true }).locator('option:checked')).toHaveText('Műhely elosztó');
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name:'Elosztó törlése', exact:true }).click();
@@ -59,12 +64,49 @@ test('opens a floor-plan board with the keyboard', async ({ page }) => {
   await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).click();
   const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
   await page.locator('.floor-svg').click({ position:{x:400,y:250} });
-  const marker = page.getByRole('button', { name:`Elosztó megnyitása: ${boardName}` });
+  const marker = page.getByRole('button', { name:`Elosztó kijelölése: ${boardName}` });
   await marker.focus(); await marker.press('Enter');
   await expect(page.getByLabel('Aktív elosztó', {exact:true}).locator('option:checked')).toHaveText(boardName!);
 });
 
-test('opens a board marker with a touch tap', async ({ browser, baseURL }) => {
+test('opens an unselected board with a double click', async ({ page }) => {
+  await page.goto('/'); await chooseSample(page);
+  await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).click();
+  const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
+  await page.locator('.floor-svg').click({ position:{x:400,y:250} });
+  await page.locator('.floor-svg').click({ position:{x:15,y:15} });
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toHaveCount(0);
+  await page.getByRole('button', { name:`Elosztó kijelölése: ${boardName}` }).dblclick();
+  await expect(page.getByLabel('Aktív elosztó', {exact:true}).locator('option:checked')).toHaveText(boardName!);
+});
+
+test('does not let a pending board click steal a later selection or interrupt a drag', async ({ page }) => {
+  await page.goto('/'); await chooseSample(page);
+  await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).click();
+  const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
+  await page.locator('.floor-svg').click({ position:{x:400,y:250} });
+  const marker = page.getByRole('button', { name:`Elosztó kijelölése: ${boardName}` });
+  await page.locator('.floor-svg').click({ position:{x:15,y:15} });
+  await marker.click();
+  await page.locator('.floor-device').first().click();
+  await page.waitForTimeout(550);
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toHaveCount(0);
+  await expect(page.getByLabel('Eszköz áramköre')).toBeVisible();
+  await page.locator('.floor-svg').click({ position:{x:15,y:15} });
+  await marker.click();
+  const before = await marker.getAttribute('transform');
+  const box = (await marker.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 20);
+  await page.mouse.down();
+  await page.waitForTimeout(550);
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toHaveCount(0);
+  await page.mouse.move(box.x + box.width / 2 + 45, box.y + 55, {steps:5});
+  await page.mouse.up();
+  await expect(marker).not.toHaveAttribute('transform', before!);
+  await expect(page.getByRole('button', {name:'Elosztóterv megnyitása'})).toBeVisible();
+});
+
+test('selects a board by touch and opens it with the visible button', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, hasTouch:true, isMobile:true, viewport:{width:320,height:844} });
   const page = await context.newPage();
   await page.goto('/'); await chooseSample(page);
@@ -73,9 +115,11 @@ test('opens a board marker with a touch tap', async ({ browser, baseURL }) => {
   await page.getByRole('button', { name:'Elosztó elhelyezése', exact:true }).tap();
   const boardName = await page.getByLabel('Elhelyezendő elosztó').locator('option:checked').textContent();
   await page.locator('.floor-svg').tap({ position:{x:180,y:160} });
-  const marker = page.getByRole('button', { name:`Elosztó megnyitása: ${boardName}` });
+  const marker = page.getByRole('button', { name:`Elosztó kijelölése: ${boardName}` });
   await expect(marker).toBeVisible();
   await marker.tap();
+  await expect(page.locator('.floor-svg')).toBeVisible();
+  await page.getByRole('button', {name:'Elosztóterv megnyitása',exact:true}).tap();
   await expect(page.getByLabel('Aktív elosztó', {exact:true}).locator('option:checked')).toHaveText(boardName!);
   await context.close();
 });

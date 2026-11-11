@@ -1,4 +1,7 @@
 const translations: Record<string, string> = {
+  'Elosztóterv megnyitása': 'Open distribution board plan',
+  'Elosztó kijelölése: {name}': 'Select distribution board: {name}',
+  'Elosztó elhelyezve. A kijelölt elosztó terve gombbal vagy dupla kattintással nyitható meg.': 'Distribution board placed. Open its plan using the button or by double-clicking.',
   'Áramkör mozgatása: {route}': 'Move circuit: {route}',
   'Betáplálás mozgatása: {name}': 'Move supply: {name}',
   'A(z) {circuit} áramkörhöz több védelmi készülék kapcsolódik. Válaszd ki a megfelelőt.': 'Multiple protective devices are associated with circuit {circuit}. Choose the appropriate device.',

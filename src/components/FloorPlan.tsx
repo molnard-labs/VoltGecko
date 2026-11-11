@@ -113,6 +113,28 @@ export function FloorPlan({
   const pinch = useRef<Pinch | null>(null);
   const dataRef = useRef(data);
   const suppressClick = useRef(false);
+  const boardClick = useRef<{ id:string; time:number; x:number; y:number } | null>(null);
+  const boardSelectTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const cancelTimer = () => {
+      if (boardSelectTimer.current !== undefined) window.clearTimeout(boardSelectTimer.current);
+      boardSelectTimer.current = undefined;
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (!boardClick.current) return;
+      cancelTimer();
+      const marker = event.target instanceof Element ? event.target.closest('.floor-board-marker') : null;
+      if (marker?.getAttribute('data-board-id') !== boardClick.current.id) boardClick.current = null;
+    };
+    const keyDown = () => { cancelTimer(); boardClick.current = null; };
+    window.addEventListener('pointerdown', pointerDown, true);
+    window.addEventListener('keydown', keyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', pointerDown, true);
+      window.removeEventListener('keydown', keyDown, true);
+      cancelTimer(); boardClick.current = null;
+    };
+  }, [sheetId, tool]);
   const devices = useMemo(() => new Map(data.devices.map((device) => [device.id, device])), [data.devices]);
   const circuits = useMemo(() => new Map(data.circuits.map((circuit) => [circuit.id, circuit])), [data.circuits]);
   dataRef.current = data;
@@ -330,10 +352,11 @@ export function FloorPlan({
   const onUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
-    // The SVG owns pointer capture during drags. Selection already happened on
-    // pointerdown, so its synthetic canvas click must not clear that selection.
-    const completedBoardClick = e.type !== 'pointercancel' && drag.current?.pointerId === e.pointerId &&
-      drag.current.mode === 'board' && !drag.current.moved ? drag.current.id : null;
+    // The SVG owns pointer capture; the resulting canvas click must not clear
+    // the element selected after this pointer interaction ends.
+    const boardDrag = e.type !== 'pointercancel' && drag.current?.pointerId === e.pointerId &&
+      drag.current.mode === 'board' ? { id:drag.current.id, moved:drag.current.moved } : null;
+    if (e.type === 'pointercancel' && drag.current?.mode === 'board') boardClick.current = null;
     if (drag.current?.mode && drag.current.mode !== 'pan') suppressClick.current = true;
     drag.current = null;
     setDragging(false);
@@ -344,7 +367,24 @@ export function FloorPlan({
       onChange({ ...dataRef.current, sheets: dataRef.current.sheets.map((s) => (s.id === sheetId ? committed : s)) });
     }
     if (svg.current?.hasPointerCapture(e.pointerId)) svg.current.releasePointerCapture(e.pointerId);
-    if (completedBoardClick) onOpenBoard(completedBoardClick);
+    if (boardDrag) {
+      const selectBoard = () => {
+        setSelectedBoardId(boardDrag.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null);
+      };
+      if (boardSelectTimer.current !== undefined) window.clearTimeout(boardSelectTimer.current);
+      boardSelectTimer.current = undefined;
+      if (!boardDrag.moved && e.pointerType === 'mouse') {
+        const previous = boardClick.current;
+        const now = Date.now();
+        if (previous?.id === boardDrag.id && now - previous.time < 450 && Math.hypot(e.clientX-previous.x, e.clientY-previous.y) < 10) {
+          boardClick.current = null;
+          onOpenBoard(boardDrag.id);
+        } else {
+          boardClick.current = { id:boardDrag.id, time:now, x:e.clientX, y:e.clientY };
+          boardSelectTimer.current = window.setTimeout(() => { boardClick.current = null; boardSelectTimer.current = undefined; selectBoard(); }, 450);
+        }
+      } else { boardClick.current = null; selectBoard(); }
+    }
     window.setTimeout(() => {
       suppressClick.current = false;
     }, 0);
@@ -434,7 +474,7 @@ export function FloorPlan({
       setSelectedNoteId(null);
       onSelect(null);
       onBoardPlaced();
-      onNotify(t('Elosztó elhelyezve. Kattints rá az elosztóterv megnyitásához.'));
+      onNotify(t('Elosztó elhelyezve. A kijelölt elosztó terve gombbal vagy dupla kattintással nyitható meg.'));
       return;
     }
     if (tool === 'route' || tool === 'control') {
@@ -896,8 +936,8 @@ export function FloorPlan({
           if (!board) return null;
           const boardLabel = tool === 'route' || tool === 'control'
             ? t('Elosztó kiválasztása kapcsolathoz: {name}', { name: board.name })
-            : t('Elosztó megnyitása: {name}', { name: board.name });
-          return <g key={`board-${board.id}`} transform={`translate(${placement.x} ${placement.y})`}
+            : t('Elosztó kijelölése: {name}', { name: board.name });
+          return <g key={`board-${board.id}`} data-board-id={board.id} transform={`translate(${placement.x} ${placement.y})`}
             className={`floor-board-marker ${selectedBoardId === board.id ? 'selected' : ''}`}
             role="button" tabIndex={0} aria-label={boardLabel}
             onFocus={() => {
@@ -915,7 +955,8 @@ export function FloorPlan({
             onPointerDown={(e) => {
               e.stopPropagation();
               if (tool !== 'select') return;
-              setSelectedBoardId(board.id); setSelectedRouteId(null); setSelectedNoteId(null); onSelect(null);
+              // Selection changes the footer height. Keep the SVG stable until a drag ends.
+              e.preventDefault();
               startDrag(e, 'board', board.id, placement);
             }}>
             <title>{boardLabel}</title>
@@ -1066,7 +1107,9 @@ export function FloorPlan({
         </div>
         {(selectedRoute || selectedNoteId || selectedPlacement || (selectedBoard && selectedBoardPlacement)) && (
           <div className="floor-selection-tools">
-            {selectedBoard && selectedBoardPlacement && <span>{t('Elosztó')}: {selectedBoard.name}</span>}
+            {selectedBoard && selectedBoardPlacement && <><span>{t('Elosztó')}: {selectedBoard.name}</span>
+              <button className="floor-board-open" onClick={() => onOpenBoard(selectedBoard.id)}>{t('Elosztóterv megnyitása')}</button>
+            </>}
             {selectedDevice && selectedPlacement && (
               <>
                 <span>
