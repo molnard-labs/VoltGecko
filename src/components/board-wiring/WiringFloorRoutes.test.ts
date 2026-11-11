@@ -5,7 +5,7 @@ import { makeDevice } from '../../catalog';
 import { createProject } from '../../data/project';
 import { wireSegmentCrossesObstacle } from '../../data/boardWireRouting';
 import type { Board, BoardWiring, ProjectData } from '../../types';
-import { WiringDiagram, useWiringDiagram } from './WiringDiagram';
+import { CIRCUIT_BOX_WIDTH, CIRCUIT_FIRST_CONNECTOR_Y, circuitBoxHeight, WiringDiagram, useWiringDiagram } from './WiringDiagram';
 
 const noop = () => {};
 function Drawing({ data, board }: { data: ProjectData; board: Board }) {
@@ -71,8 +71,8 @@ describe('circuit connections on the wiring diagram', () => {
       const raw = markup.match(/data-circuit-link="[^"]+"[^>]*>\s*<polyline class="wiring-wire-hit" points="([^"]+)/)?.[1];
       expect(raw).toBeDefined();
       const points = raw!.split(' ').map(pair => { const [x,y] = pair.split(',').map(Number); return {x,y}; });
-      const box = {...position,width:230,height:144};
-      expect(points.at(-1)).toEqual({x:position.x,y:position.y+62});
+      const box = {...position,width:CIRCUIT_BOX_WIDTH,height:circuitBoxHeight(3)};
+      expect(points.at(-1)).toEqual({x:position.x,y:position.y+CIRCUIT_FIRST_CONNECTOR_Y});
       expect(points.at(-2)!.y).toBe(points.at(-1)!.y);
       expect(points.at(-2)!.x).toBeLessThan(points.at(-1)!.x);
       for (let i = 1; i < points.length; i++) expect(wireSegmentCrossesObstacle(points[i-1],points[i],box), JSON.stringify({id,position,points})).toBe(false);

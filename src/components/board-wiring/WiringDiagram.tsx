@@ -29,6 +29,11 @@ import './wire-endpoints.css';
 import { moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend, WIRING_GRID_SIZE } from './wireEditing';
 
 export const circuitWireId = (circuitId: string, conductor: Conductor) => 'circuit-wire:' + JSON.stringify([circuitId, conductor]);
+export const CIRCUIT_BOX_WIDTH = 168;
+export const CIRCUIT_FIRST_CONNECTOR_Y = 49;
+export const CIRCUIT_CONNECTOR_SPACING = 20;
+export const circuitBoxHeight = (connectorCount: number) =>
+  Math.max(76, CIRCUIT_FIRST_CONNECTOR_Y + (connectorCount - 1) * CIRCUIT_CONNECTOR_SPACING + 12);
 
 // Resolve only bundled catalog images by both manufacturer and reference. The
 // catalog uses embedded image data, so the drawing's SVG export remains portable.
@@ -222,7 +227,7 @@ export function useWiringDiagram(
     const occupiedBottom = Math.max(rowsBottom,
       ...wiring.buses.map(bus => savedBusY(bus) + 38),
       ...wiring.infeeds.map((source, sourceIndex) => (source.position?.y ?? 110 + sourceIndex * 145) + 58));
-    return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 250 };
+    return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 200 };
   };
   const circuitConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
     const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
@@ -239,7 +244,7 @@ export function useWiringDiagram(
   for (const [index, {circuit, connection}] of boardCircuits.entries()) {
     const origin = boardCircuitPosition(circuit.id, connection, index);
     const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
-    obstacles.push({...origin, width:230, height:Math.max(90, 72 + conductors.length * 24)});
+    obstacles.push({...origin, width:CIRCUIT_BOX_WIDTH, height:circuitBoxHeight(conductors.length)});
   }
   const circuitWireById = new Map<string, {circuitId:string; conductor:Conductor; point:Point}>();
   const circuitWires: BoardWire[] = [];
@@ -253,7 +258,7 @@ export function useWiringDiagram(
       if (!local) continue;
       let id = circuitWireId(circuit.id, item.conductor);
       while (wiring.wires.some(wire => wire.id === id) || circuitWireById.has(id)) id = ':' + id;
-      circuitWireById.set(id, {circuitId:circuit.id, conductor:item.conductor, point:{x:origin.x, y:origin.y + 62 + conductors.indexOf(item.conductor) * 24}});
+      circuitWireById.set(id, {circuitId:circuit.id, conductor:item.conductor, point:{x:origin.x, y:origin.y + CIRCUIT_FIRST_CONNECTOR_Y + conductors.indexOf(item.conductor) * CIRCUIT_CONNECTOR_SPACING}});
       circuitWires.push({id,from:endpoint,to:endpoint,points:item.points,...defaultWireColor(item.conductor)});
     }
   }
@@ -434,7 +439,8 @@ export function useWiringDiagram(
   for (const [index, item] of boardCircuits.entries()) {
     const position = boardCircuitPosition(item.circuit.id, item.connection, index);
     minX = Math.min(minX, position.x - 100); minY = Math.min(minY, position.y - 25);
-    maxX = Math.max(maxX, position.x + 250); maxY = Math.max(maxY, position.y + 260);
+    const conductors = circuitConductors([...item.connection.terminals, ...(item.connection.legacyTerminalConflicts ?? [])]);
+    maxX = Math.max(maxX, position.x + CIRCUIT_BOX_WIDTH + 20); maxY = Math.max(maxY, position.y + circuitBoxHeight(conductors.length) + 20);
   }
   for (const wire of circuitWires) for (const point of route(wire, 0)) {
     minX = Math.min(minX, point.x - 18); minY = Math.min(minY, point.y - 18);
@@ -555,8 +561,28 @@ export function WiringDiagram({
   const pePatternId = `wiring-pe-${useId().replace(/:/g, '')}`;
   const deviceClipId = `wiring-device-${useId().replace(/:/g, '')}`;
   const gridPatternId = `wiring-grid-${useId().replace(/:/g, '')}`;
-  const lastCircuitTouch = useRef<{key:string; time:number} | undefined>(undefined);
+  const lastCircuitTouch = useRef<{key:string; time:number; x:number; y:number} | undefined>(undefined);
   const circuitTouchStart = useRef<{key:string; pointerId:number; x:number; y:number} | undefined>(undefined);
+  useEffect(() => {
+    // Selecting a circuit can insert a status line above the drawing. The
+    // browser's compatibility click then lands on whatever moved under the
+    // finger, even though pointerup was handled by the circuit connector.
+    // Suppress only that click; a new pointerdown starts a new interaction.
+    const start = () => { lastCircuitTouch.current = undefined; };
+    const suppressCompatibilityClick = (event: MouseEvent) => {
+      const last = lastCircuitTouch.current;
+      if (!last || event.detail === 0 || Date.now() - last.time > 750 || Math.hypot(event.clientX - last.x, event.clientY - last.y) > 8) return;
+      lastCircuitTouch.current = undefined;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('pointerdown', start, true);
+    window.addEventListener('click', suppressCompatibilityClick, true);
+    return () => {
+      window.removeEventListener('pointerdown', start, true);
+      window.removeEventListener('click', suppressCompatibilityClick, true);
+    };
+  }, []);
   const {
     svgRef,
     snapToGrid,
@@ -836,15 +862,15 @@ export function WiringDiagram({
         {boardCircuits.map(({ circuit, connection }, index) => {
           const origin = boardCircuitPosition(circuit.id, connection, index);
           const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
-          const height = Math.max(90, 72 + conductors.length * 24);
+          const height = circuitBoxHeight(conductors.length);
           const circuitLabel = circuit.code + ' · ' + circuit.name;
           return <g key={'circuit-box-' + circuit.id} className="wiring-circuit" data-circuit-id={circuit.id}>
             <title>{circuitLabel}</title>
-            <rect x={origin.x} y={origin.y} width={230} height={height} rx={6} fill="#f3f8f5" stroke="#638a74" />
-            <text x={origin.x + 18} y={origin.y + 22} fontSize={13} fontWeight={600} fill="#174f3d">{circuit.code}</text>
-            <text x={origin.x + 18} y={origin.y + 40} fontSize={12} fill="#365746">{circuit.name.length > 24 ? circuit.name.slice(0, 23) + '…' : circuit.name}</text>
-            {(connection.legacyTerminalConflicts?.length || connection.legacyPositionConflict) && <text x={origin.x + 185} y={origin.y + 22} fontSize={14} fontWeight={700} fill="#a52f20"><title>{t('Korábbi kapcsolatok eltérnek; ellenőrizd az áramkör beállításait.')}</title>!</text>}
-            <foreignObject className="wiring-device-grip-container" x={origin.x + 200} y={origin.y + 5} width={24} height={20}>
+            <rect x={origin.x} y={origin.y} width={CIRCUIT_BOX_WIDTH} height={height} rx={6} fill="#f3f8f5" stroke="#638a74" />
+            <text x={origin.x + 14} y={origin.y + 17} fontSize={13} fontWeight={600} fill="#174f3d">{circuit.code}</text>
+            <text x={origin.x + 14} y={origin.y + 33} fontSize={12} fill="#365746">{circuit.name.length > 18 ? circuit.name.slice(0, 17) + '…' : circuit.name}</text>
+            {(connection.legacyTerminalConflicts?.length || connection.legacyPositionConflict) && <text x={origin.x + CIRCUIT_BOX_WIDTH - 44} y={origin.y + 17} fontSize={14} fontWeight={700} fill="#a52f20"><title>{t('Korábbi kapcsolatok eltérnek; ellenőrizd az áramkör beállításait.')}</title>!</text>}
+            <foreignObject className="wiring-device-grip-container" x={origin.x + CIRCUIT_BOX_WIDTH - 29} y={origin.y + 4} width={24} height={20}>
               <button type="button" className="wiring-device-grip" aria-label={t('Áramkör mozgatása: {route}', {route:circuitLabel})}
                 onPointerDown={event => { event.currentTarget.focus({preventScroll:true}); startDrag(event, 'circuit', circuit.id, origin); }}
                 onClick={event => { event.preventDefault(); event.stopPropagation(); }}
@@ -861,7 +887,7 @@ export function WiringDiagram({
               const terminal = connection.terminals.find(item => item.conductor === conductor);
               const visible = terminal ? localVisibleEndpoint(terminal.endpoint) : true;
               const active = selectedCircuitConnector?.circuitId === circuit.id && selectedCircuitConnector.conductor === conductor;
-              const x = origin.x, y = origin.y + 62 + wireIndex * 24;
+              const x = origin.x, y = origin.y + CIRCUIT_FIRST_CONNECTOR_Y + wireIndex * CIRCUIT_CONNECTOR_SPACING;
               const conflict = connection.legacyTerminalConflicts?.some(item => item.conductor === conductor);
               const title = t('{conductor} · {circuit}: áramköri végpont', { conductor, circuit:circuitLabel });
               const select = () => onSelectCircuitConnector?.(circuit.id, conductor);
@@ -874,7 +900,7 @@ export function WiringDiagram({
                   if (event.pointerType !== 'touch') return;
                   const start = circuitTouchStart.current; circuitTouchStart.current = undefined;
                   event.preventDefault(); event.stopPropagation();
-                  lastCircuitTouch.current = {key:touchKey,time:Date.now()};
+                  lastCircuitTouch.current = {key:touchKey,time:Date.now(),x:event.clientX,y:event.clientY};
                   if (start?.key === touchKey && start.pointerId === event.pointerId && Math.hypot(event.clientX-start.x,event.clientY-start.y) <= 8) select();
                 }}
                 onPointerCancel={() => { circuitTouchStart.current = undefined; }}
@@ -885,7 +911,7 @@ export function WiringDiagram({
                 }}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); select(); } }}>
                 <title>{terminal ? title + ' · ' + (visible ? label(terminal.endpoint) : t('Kapocs nem látható a rajzon')) : title}</title>
-                <circle cx={x} cy={y} r={14} fill="transparent" />
+                <circle cx={x} cy={y} r={CIRCUIT_CONNECTOR_SPACING / 2} fill="transparent" />
                 <circle cx={x} cy={y} r={active ? 8 : 6} fill={terminal ? (visible ? '#276b50' : '#bf432c') : '#fff'} stroke={active ? '#ed9700' : conflict ? '#bf432c' : '#276b50'} strokeWidth={active || conflict ? 3 : 2} />
                 <text x={x + 14} y={y + 4} textAnchor="start" fontSize={11} fontWeight={700} fill={visible && !conflict ? '#174f3d' : '#a52f20'} pointerEvents="none">{conductor}{visible && !conflict ? '' : '!'}</text>
               </g>;
