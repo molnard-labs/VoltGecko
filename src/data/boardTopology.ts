@@ -3,6 +3,8 @@ import type { Board, BoardBus, BoardConnection, BoardInfeed, BoardWire, Circuit,
 import { effectiveDevicePoles, getWiringIssues } from './boardWiring';
 import { circuitBelongsToBoard } from './circuitBoardAssociation';
 import { getBoardConnectionIssues } from './boardConnections';
+import schneiderSource from '../products/schneider-source.json';
+import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
 
 /** Distinct sides and pole indices are retained even when they share a net. */
 export interface TopologyTerminal {
@@ -57,7 +59,7 @@ export interface TopologyDevice {
   device: Device;
   boardId?: string;
   /** Product pole count alone does not prove conductor functions or ordering. */
-  poleDefinition: 'explicit' | 'product' | 'inferred';
+  poleDefinition: 'explicit' | 'verified-product' | 'product' | 'inferred';
   /** The source role does not specify which device terminal is supplied. */
   sourceSideUnspecified: boolean;
   poles: TopologyDevicePole[];
@@ -114,6 +116,26 @@ function hasKnownThroughPoles(device:Device):boolean {
   const role = device.electrical?.role;
   if (role) return ['main','mcb','rccb','rcbo','mpcb','terminal'].includes(role);
   return ['main','breaker','rcd','rcbo'].includes(device.kind);
+}
+
+/** A saved product reference is not sufficient on its own. Check it against
+ * the bundled manufacturer facts and the saved category/pole count. Only
+ * devices whose conductor identities are known are supported here: a
+ * single-pole MCB and the specifically documented Easy9 RCD/RCBO references.
+ * Legacy wire indices continue to use effectiveDevicePoles, not the physical
+ * ordering of terminals; no project data is modified. */
+function hasVerifiedProductPoles(device:Device):boolean {
+  const product=device.product;
+  if (!product || product.manufacturer !== 'Schneider Electric') return false;
+  const fact=schneiderSource.products.find(item=>item.sku===product.reference);
+  if (!fact || fact.family !== 'Easy9 Pro' || fact.mountingType !== 'din' || fact.poles !== product.poles) return false;
+  if (fact.category === 'mcb' && device.kind === 'breaker' && fact.poles === '1P') return true;
+  if ((fact.category === 'rccb' && device.kind === 'rcd') || (fact.category === 'rcbo' && device.kind === 'rcbo')) {
+    const count=easy9NeutralPoleCount(product.reference);
+    return count === 2 ? (fact.poles === '2P' || fact.poles === '1P+N')
+      : count === 4 ? (fact.poles === '4P' || fact.poles === '3P+N') : false;
+  }
+  return false;
 }
 
 /** Construct a conductor-aware network, keeping electrical nets, the devices
@@ -273,10 +295,11 @@ export function buildBoardTopology(data:ProjectData, boards:Board | Board[]):Boa
     const device=byDevice.get(id); if (!device || device.kind === 'blank') return [];
     const boardId=deviceBoard.get(id);
     const poleDefinition:TopologyDevice['poleDefinition'] = device.electrical ? 'explicit'
+      : hasVerifiedProductPoles(device) ? 'verified-product'
       : device.product?.poles && /^([1-4])P?(\+N)?$/.test(device.product.poles.replace(/\s/g,'').toUpperCase()) ? 'product' : 'inferred';
     // A generic "2P" product count doesn't prove the individual pole
     // functions; never present its inferred L/N assignment as verified.
-    const through=hasKnownThroughPoles(device) && poleDefinition === 'explicit';
+    const through=hasKnownThroughPoles(device) && (poleDefinition === 'explicit' || poleDefinition === 'verified-product');
     const poles=devicePoles.get(id)!.map((conductor,pole)=>({pole,conductor,
       top:register({kind:'device',deviceId:id,side:'top',pole}),
       bottom:register({kind:'device',deviceId:id,side:'bottom',pole}),through}));

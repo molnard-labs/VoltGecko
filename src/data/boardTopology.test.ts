@@ -3,6 +3,9 @@ import { makeDevice } from '../catalog';
 import type { Board, BoardWire, WiringEndpoint } from '../types';
 import { createProject } from './project';
 import { buildBoardTopology, topologyEndpointKey } from './boardTopology';
+import { createDeviceFromProduct } from '../products/factory';
+import { SCHNEIDER_PRODUCTS } from '../products/schneider';
+import { devicePhysicalPoleOrder, wiringEndpointLabel } from './boardWiring';
 
 const device = (id:string, side:'top'|'bottom', pole=0):WiringEndpoint => ({kind:'device',deviceId:id,side,pole});
 const infeed = (id:string,pole:number):WiringEndpoint => ({kind:'infeed',infeedId:id,pole});
@@ -112,6 +115,89 @@ describe('board terminal topology',()=>{
     expect(item.poleDefinition).toBe('product');
     expect(item.poles).toHaveLength(2);
     expect(item.poles.every(pole=>!pole.through)).toBe(true);
+  });
+
+  it('uses documented Schneider product poles in legacy projects without reordering wires or editing data',()=>{
+    const {doc,board}=fixture();
+    const product=(ref:string)=>SCHNEIDER_PRODUCTS.find(item=>item.reference===ref)!;
+    const fi=createDeviceFromProduct(product('EZ9R49240'),[]);fi.id='fi2';fi.code='FI2';delete fi.electrical;
+    const q16=createDeviceFromProduct(product('EZ9F27116'),[fi]);q16.id='q16';q16.code='QF1';
+    const q13=createDeviceFromProduct(product('EZ9F27113'),[fi,q16]);q13.id='q13';q13.code='QF3';
+    doc.data.devices=[fi,q16,q13];board.rows[0].placements=[{deviceId:fi.id,start:0},{deviceId:q16.id,start:2},{deviceId:q13.id,start:3}];
+    board.wiring!.wires=[wire('supply-l',infeed('source',0),device(fi.id,'top',0)),wire('supply-n',infeed('source',1),device(fi.id,'top',1)),
+      wire('fi-q16',device(fi.id,'bottom',0),device(q16.id,'top')),wire('q16-q13',device(q16.id,'top'),device(q13.id,'top'))];
+    doc.data.circuits[0].boardConnections=[{boardId:board.id,terminals:[{conductor:'L',endpoint:device(q16.id,'bottom')},{conductor:'N',endpoint:device(fi.id,'bottom',1)}]}];
+    const original=structuredClone(doc.data), result=buildBoardTopology(doc.data,board);
+    const fiTopology=result.devices.find(item=>item.device.id===fi.id)!;
+    expect(fiTopology.poleDefinition).toBe('verified-product');
+    expect(fiTopology.poles.map(item=>item.conductor)).toEqual(['L','N']);
+    expect(devicePhysicalPoleOrder(fi)).toEqual([1,0]);
+    expect(wiringEndpointLabel(doc.data,device(fi.id,'top',0))).toContain('2 (L)');
+    expect(wiringEndpointLabel(doc.data,device(fi.id,'top',1))).toContain('1 (N)');
+    for(const id of [fi.id,q16.id,q13.id]){
+      const item=result.devices.find(candidate=>candidate.device.id===id)!;
+      expect(item.poleDefinition).toBe('verified-product');
+      expect(item.poles.every(pole=>pole.through && pole.top.netId!==pole.bottom.netId)).toBe(true);
+    }
+    for(const connection of result.circuits[0].connections){
+      const net=result.nets.find(item=>item.id===connection.netId)!;
+      expect(net.reachableSources.map(source=>source.conductor)).toEqual([connection.conductor]);
+    }
+    expect(result.issues.some(issue=>issue.code==='circuit-source-unverified')).toBe(false);
+    expect(doc.data).toEqual(original);
+  });
+
+  it('does not trust an unknown, mismatched or multipole product based on pole count alone',()=>{
+    const {doc,board,breaker}=fixture();
+    const known=createDeviceFromProduct(SCHNEIDER_PRODUCTS.find(item=>item.reference==='EZ9F27116')!,[]);
+    const twoPole=createDeviceFromProduct(SCHNEIDER_PRODUCTS.find(item=>item.reference==='EZ9F27216')!,[]);twoPole.id='real-two-pole';
+    const alternatives=[
+      {...known,id:'wrong-maker',product:{...known.product!,manufacturer:'Other'}},
+      {...known,id:'unknown-ref',product:{...known.product!,reference:'UNKNOWN'}},
+      {...known,id:'wrong-poles',product:{...known.product!,poles:'2P'}},
+      {...known,id:'wrong-kind',kind:'rcd' as const},
+      twoPole,
+    ];
+    doc.data.devices=[breaker,...alternatives];board.rows[0].placements=doc.data.devices.map((item,index)=>({deviceId:item.id,start:index}));
+    const result=buildBoardTopology(doc.data,board);
+    for(const candidate of alternatives){
+      const item=result.devices.find(value=>value.device.id===candidate.id)!;
+      expect(item.poleDefinition).not.toBe('verified-product');
+      expect(item.poles.every(pole=>!pole.through)).toBe(true);
+    }
+  });
+
+  it('retains 4P Easy9 legacy indices, while explicit pole edits and conflicting snapshots take precedence',()=>{
+    const {doc,board}=fixture();
+    const create=(reference:string,id:string)=>{
+      const item=createDeviceFromProduct(SCHNEIDER_PRODUCTS.find(product=>product.reference===reference)!,[]);
+      item.id=id;delete item.electrical;return item;
+    };
+    const fourPoleRcd=create('EZ9R49440','fi4'), fourPoleRcbo=create('EZ9D55716','rcbo4');
+    const wrongCount=create('EZ9R49440','wrong-count');wrongCount.product!.poles='2P';
+    const edited=create('EZ9R49240','edited');
+    edited.electrical={role:'spd',poles:['N','L'],physicalPoleOrder:[0,1]};
+    doc.data.devices=[fourPoleRcd,fourPoleRcbo,wrongCount,edited];
+    board.rows[0].placements=doc.data.devices.map((item,index)=>({deviceId:item.id,start:index*4}));
+    const snapshot=structuredClone(doc.data), topology=buildBoardTopology(doc.data,board);
+    for(const item of [fourPoleRcd,fourPoleRcbo]){
+      const found=topology.devices.find(device=>device.device.id===item.id)!;
+      expect(found.poleDefinition).toBe('verified-product');
+      expect(found.poles.map(pole=>pole.conductor)).toEqual(['L1','L2','L3','N']);
+      expect(found.poles.every(pole=>pole.through && pole.top.netId!==pole.bottom.netId)).toBe(true);
+      expect(devicePhysicalPoleOrder(item)).toEqual([3,0,1,2]);
+      expect(wiringEndpointLabel(doc.data,device(item.id,'top',3))).toContain('1 (N)');
+      expect(wiringEndpointLabel(doc.data,device(item.id,'top',0))).toContain('2 (L1)');
+    }
+    const conflict=topology.devices.find(device=>device.device.id===wrongCount.id)!;
+    expect(conflict.poleDefinition).toBe('product');
+    expect(conflict.poles.every(pole=>!pole.through)).toBe(true);
+    const user=topology.devices.find(device=>device.device.id===edited.id)!;
+    expect(user.poleDefinition).toBe('explicit');
+    expect(user.poles.map(pole=>pole.conductor)).toEqual(['N','L']);
+    expect(devicePhysicalPoleOrder(edited)).toEqual([0,1]);
+    expect(user.poles.every(pole=>!pole.through)).toBe(true);
+    expect(doc.data).toEqual(snapshot);
   });
 
   it('does not invent which side of a supply-role device is its source',()=>{

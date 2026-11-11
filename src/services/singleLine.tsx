@@ -1,8 +1,9 @@
 import { t, getLocale } from '../i18n';
-import { buildBoardTopology } from '../data/boardTopology';
+import { buildBoardTopology, topologyEndpointKey } from '../data/boardTopology';
 import type { BoardTopology, TopologyCircuitTerminal, TopologyDevice, TopologyDevicePole, TopologyNet, TopologySource } from '../data/boardTopology';
 import { wiringEndpointLabel } from '../data/boardWiring';
 import { circuitPhaseConnectionLabel } from './circuitPhaseLabels';
+import { missingCircuitTerminals } from './missingCircuitTerminals';
 import type { DiagramNetSegment } from './diagramPages';
 import { drawSingleLineDeviceSymbol, drawSingleLineGroundSymbol, drawSingleLineLoadSymbol, getSingleLineDeviceRole, getSingleLinePoleLabel } from './singleLineSymbols';
 import type { Board, CableDetails, Circuit, Conductor, Device, ProjectData, WiringEndpoint } from '../types';
@@ -57,14 +58,47 @@ const sectionNames:Record<Section,string>={phase:'Fázisvezetők',neutral:'Nulla
 type DeviceEdge = { id:string; device:Device; boardId?:string; pole:TopologyDevicePole; a:string; b:string };
 type Leaf = {kind:'circuit'; item:TopologyCircuitTerminal; circuit:Circuit} | {kind:'terminal'; device:Device; pole:TopologyDevicePole; side:'top'|'bottom'; openDevice:boolean; poleUnconfirmed:boolean; remote:boolean} | {kind:'reference'; edge:DeviceEdge; other:string; reference:string};
 type Tree = {net:TopologyNet; incoming?:DeviceEdge; parent?:Tree; children:Tree[]; leaves:Leaf[]; depth:number; x:number; y:number; left:number; right:number};
-type Forest = {section:Section; roots:Tree[]; width:number; height:number; startY:number; refs:DeviceEdge[]; omitted?:boolean};
+type InlineSourceTerminal = {device:Device; pole:TopologyDevicePole; source:TopologySource; input:'top'|'bottom'};
+type Forest = {section:Section; roots:Tree[]; width:number; height:number; startY:number; refs:DeviceEdge[]; inline:Map<string,InlineSourceTerminal>; omitted?:boolean};
 const STEP_X=200, STEP_Y=170, MARGIN=42, LEFT=105;
+
+/** Only place a terminal in series when every connection on its source side
+ * is explicitly known. Any branch, ambiguity, or second source leaves the
+ * terminal in the normal endpoint list instead of inventing a feed path. */
+function inlineSourceTerminals(topology:BoardTopology,data:ProjectData,selectedBoardIds:Set<string>):Map<string,InlineSourceTerminal>{
+  const result=new Map<string,InlineSourceTerminal>();
+  const wiresAt=(key:string)=>topology.wires.filter(wire=>wire.fromKey===key||wire.toKey===key);
+  const allWires=data.boards.flatMap(board=>board.wiring?.wires??[]);
+  const allWireCount=(key:string)=>allWires.filter(wire=>topologyEndpointKey(wire.from)===key||topologyEndpointKey(wire.to)===key).length;
+  const circuitsAt=(key:string)=>data.circuits.some(circuit=>circuit.boardConnections?.some(connection=>connection.terminals.some(terminal=>topologyEndpointKey(terminal.endpoint)===key)||connection.legacyTerminalConflicts?.some(conflict=>conflict.endpoints.some(endpoint=>topologyEndpointKey(endpoint)===key))));
+  for(const item of topology.devices){
+    if((item.boardId && !selectedBoardIds.has(item.boardId))||getSingleLineDeviceRole(item.device)!=='terminal'||item.poles.length!==1||item.device.electrical?.commonPoleGroups?.some(group=>new Set(group).size>1))continue;
+    for(const pole of item.poles){
+      if(pole.top.netId!==pole.bottom.netId)continue;
+      const net=topology.nets.find(candidate=>candidate.id===pole.top.netId);
+      if(!net||net.sources.length!==1||result.has(net.id))continue;
+      const source=net.sources[0],sourceWires=wiresAt(source.terminalKey);
+      if(sourceWires.length!==1||allWireCount(source.terminalKey)!==1||circuitsAt(source.terminalKey))continue;
+      for(const input of ['top','bottom'] as const){
+        const incoming=pole[input],outgoing=pole[input==='top'?'bottom':'top'];
+        const inputWires=wiresAt(incoming.key),outputWires=wiresAt(outgoing.key),wire=sourceWires[0];
+        if(inputWires.length!==1||outputWires.length!==1||allWireCount(incoming.key)!==1||allWireCount(outgoing.key)!==1||circuitsAt(incoming.key)||!wire.valid||wire.incompatible||!outputWires[0].valid||outputWires[0].incompatible)continue;
+        if(outputWires[0].fromKey===outputWires[0].toKey)continue;
+        if(!((wire.fromKey===source.terminalKey&&wire.toKey===incoming.key)||(wire.toKey===source.terminalKey&&wire.fromKey===incoming.key)))continue;
+        result.set(net.id,{device:item.device,pole,source,input});break;
+      }
+    }
+  }
+  return result;
+}
 
 /** Only electrical nets and same-pole, known device paths participate in the tree.
  * A cycle is retained as a labelled continuation reference and in the detailed
  * connection table; it is never silently turned into a different connection. */
-function makeForest(section:Section,nets:TopologyNet[],edges:DeviceEdge[],topology:BoardTopology,startY:number,selectedBoardIds:Set<string>):Forest {
+function makeForest(section:Section,nets:TopologyNet[],edges:DeviceEdge[],topology:BoardTopology,data:ProjectData,startY:number,selectedBoardIds:Set<string>):Forest {
   const map=new Map(nets.map(net=>[net.id,net]));
+  const inline=new Map([...inlineSourceTerminals(topology,data,selectedBoardIds)].filter(([netId])=>map.has(netId)));
+  const extraTop=inline.size?Math.max(100,80+Math.max(...[...inline.values()].map(item=>lines(sourceName(item.source,topology,data),29).length))*13):0;
   const adjacency=new Map(nets.map(net=>[net.id,[] as DeviceEdge[]]));
   for(const edge of edges) if(map.has(edge.a)&&map.has(edge.b)) {
     adjacency.get(edge.a)!.push(edge);
@@ -80,13 +114,15 @@ function makeForest(section:Section,nets:TopologyNet[],edges:DeviceEdge[],topolo
   const relevantKeys=new Set(topology.wires.flatMap(wire=>[wire.fromKey,wire.toKey]));
   for(const item of topology.circuits) for(const connection of item.connections) relevantKeys.add(connection.terminalKey);
   for(const item of topology.devices) for(const pole of item.poles) {
+    const series=inline.get(pole.top.netId);
+    if(series?.device.id===item.device.id && series.pole.pole===pole.pole)continue;
     if(pole.through && pole.top.netId!==pole.bottom.netId && map.has(pole.top.netId) && map.has(pole.bottom.netId) && drawnEdges.has(JSON.stringify([item.device.id,pole.pole])))continue;
     for(const side of ['top','bottom'] as const) {
       const terminal=pole[side];
       if(!relevantKeys.has(terminal.key)||!map.has(terminal.netId)) continue;
       const list=terminalLeaves.get(terminal.netId)??[];
       if(!list.some(leaf=>leaf.kind==='terminal'&&leaf.device.id===item.device.id&&leaf.pole.pole===pole.pole&&pole.top.netId===pole.bottom.netId))
-        list.push({kind:'terminal',device:item.device,pole,side,openDevice:pole.through && pole.top.netId!==pole.bottom.netId,poleUnconfirmed:item.poleDefinition!=='explicit',remote:!!item.boardId&&!selectedBoardIds.has(item.boardId)});
+        list.push({kind:'terminal',device:item.device,pole,side,openDevice:pole.through && pole.top.netId!==pole.bottom.netId,poleUnconfirmed:item.poleDefinition!=='explicit' && item.poleDefinition!=='verified-product',remote:!!item.boardId&&!selectedBoardIds.has(item.boardId)});
       terminalLeaves.set(terminal.netId,list);
     }
   }
@@ -120,22 +156,38 @@ function makeForest(section:Section,nets:TopologyNet[],edges:DeviceEdge[],topolo
       }
     }
   }
-  // Iterative postorder prevents a deep installation from overflowing the stack.
-  let column=0,maxDepth=0;
+  // Lay out independent trees in rows. Treating every disconnected root as a
+  // single horizontal row can exceed the width limit even for a small board,
+  // hiding every branch behind the large-network fallback.
+  const columnsPerRow=Math.floor((3200-LEFT-MARGIN)/STEP_X);
+  let rowColumns=0,rowOffset=0,rowDepth=0,maxColumns=0;
   for(const root of roots) {
+    let column=0,rootDepth=0;
     const stack:[Tree,boolean][]=[[root,false]];
     while(stack.length){
-      const [node,done]=stack.pop()!;maxDepth=Math.max(maxDepth,node.depth);
+      const [node,done]=stack.pop()!;rootDepth=Math.max(rootDepth,node.depth);
       if(!done){stack.push([node,true]);for(let i=node.children.length-1;i>=0;i--)stack.push([node.children[i],false]);continue;}
       const positions=node.children.map(child=>child.x);
       for(const leaf of node.leaves){(leaf as Leaf & {x?:number}).x=LEFT+(column++)*STEP_X;positions.push((leaf as Leaf & {x:number}).x);}
       if(!positions.length)positions.push(LEFT+(column++)*STEP_X);
       node.left=Math.min(...positions);node.right=Math.max(...positions);node.x=(node.left+node.right)/2;
-      node.y=startY+90+node.depth*STEP_Y;
     }
-    column++;
+    const gap=rowColumns ? 1 : 0;
+    if(rowColumns && rowColumns+gap+column>columnsPerRow){
+      rowOffset+=rowDepth*STEP_Y+250;rowColumns=0;rowDepth=0;
+    }
+    const offset=(rowColumns ? rowColumns+1 : 0)*STEP_X;
+    const queue=[root];
+    for(let i=0;i<queue.length;i++){
+      const node=queue[i];queue.push(...node.children);
+      node.x+=offset;node.left+=offset;node.right+=offset;
+      node.y=startY+90+extraTop+rowOffset+node.depth*STEP_Y;
+      for(const leaf of node.leaves)(leaf as Leaf & {x:number}).x+=offset;
+    }
+    rowColumns=(rowColumns ? rowColumns+1 : 0)+column;
+    rowDepth=Math.max(rowDepth,rootDepth);maxColumns=Math.max(maxColumns,rowColumns);
   }
-  return {section,roots,width:Math.max(640,LEFT+Math.max(1,column)*STEP_X+MARGIN),height:Math.max(150,150+(maxDepth+1)*STEP_Y),startY,refs};
+  return {section,roots,width:Math.max(640,LEFT+Math.max(1,maxColumns)*STEP_X+MARGIN),height:Math.max(150,150+extraTop+rowOffset+(rowDepth+1)*STEP_Y),startY,refs,inline};
 }
 
 function sourceName(source:TopologySource,topology:BoardTopology,data:ProjectData):string {
@@ -169,9 +221,23 @@ function renderForest(forest:Forest,topology:BoardTopology,data:ProjectData,bloc
       const left=Math.min(...positions),right=Math.max(...positions);
       if(right>left){pieces.push(`<path d="M${left} ${node.y}H${right}" fill="none" stroke="#151515" stroke-width="1.5" data-net-id="${xml(node.net.id)}"/>`);netSegments.push({x1:left,y1:node.y,x2:right,y2:node.y,net:netNames.get(node.net.id)??'?'});}
       else pieces.push(`<circle cx="${node.x}" cy="${node.y}" r="2.5" fill="#151515" data-net-id="${xml(node.net.id)}"/>`);
-      const netLabel=[netNames.get(node.net.id),...(buses.get(node.net.id)??[]),...node.net.sources.map(source=>sourceName(source,topology,data))].filter(Boolean).join(' · ');
-      if(netLabel)pieces.push(wrapped(node.x,node.y-16-(lines(netLabel,29).length-1)*13,netLabel,29,10,600,'middle',forest.section==='mixed'||node.net.conflicted?'#a12d24':'#161616'));
-      if(netLabel)blocks.push({x:node.x-90,y:node.y-27-(lines(netLabel,29).length-1)*13,width:180,height:lines(netLabel,29).length*13});
+      const series=forest.inline.get(node.net.id);
+      const netLabel=[netNames.get(node.net.id),...(buses.get(node.net.id)??[]),...(series?[]:node.net.sources.map(source=>sourceName(source,topology,data)))].filter(Boolean).join(' · ');
+      const labelX=series?node.x+14:node.x,labelAnchor=series?'start':'middle';
+      if(netLabel)pieces.push(wrapped(labelX,node.y-16-(lines(netLabel,29).length-1)*13,netLabel,29,10,600,labelAnchor,forest.section==='mixed'||node.net.conflicted?'#a12d24':'#161616'));
+      if(netLabel)blocks.push({x:series?labelX:node.x-90,y:node.y-27-(lines(netLabel,29).length-1)*13,width:180,height:lines(netLabel,29).length*13});
+      if(series){
+        const symbolY=node.y-96,symbolHeight=44,terminal=series.pole[series.input],other=series.pole[series.input==='top'?'bottom':'top'];
+        const sourceLabel=sourceName(series.source,topology,data),sourceLines=lines(sourceLabel,29);
+        sourceLines.forEach((line,index)=>pieces.push(text(node.x,symbolY-20-(sourceLines.length-1-index)*13,line,10,600,'middle')));
+        pieces.push(`<path d="M${node.x} ${symbolY-10}V${symbolY}" fill="none" stroke="#151515" stroke-width="1.4"/>`);
+        pieces.push(`<g data-device-id="${xml(series.device.id)}" data-pole="${series.pole.pole}" data-conductor="${xml(series.pole.conductor)}" data-source-terminal="true" tabindex="0" role="button" aria-label="${xml(`${series.device.code} · ${series.device.name}`)}"><title>${xml(`${sourceLabel}\n${endpointLabel(data,terminal.endpoint)} ↔ ${endpointLabel(data,other.endpoint)}`)}</title>${drawSingleLineDeviceSymbol(series.device,{x:node.x,y:symbolY,height:symbolHeight})}</g>`);
+        pieces.push(`<path d="M${node.x} ${symbolY+symbolHeight}V${node.y}" fill="none" stroke="#151515" stroke-width="1.4"/>`);
+        netSegments.push({x1:node.x,y1:symbolY-10,x2:node.x,y2:symbolY,net:netNames.get(node.net.id)??'?'},{x1:node.x,y1:symbolY+symbolHeight,x2:node.x,y2:node.y,net:netNames.get(node.net.id)??'?'});
+        pieces.push(text(node.x+14,symbolY+14,series.device.code,11,700));
+        pieces.push(wrapped(node.x+14,symbolY+28,`${wiringEndpointLabel(data,terminal.endpoint)} ↔ ${wiringEndpointLabel(data,other.endpoint)}`,23,9));
+        blocks.push({x:node.x-14,y:symbolY-10,width:185,height:80},{x:node.x-90,y:symbolY-34-(sourceLines.length-1)*13,width:180,height:sourceLines.length*13});
+      }
       if(node.net.sources.length>1)pieces.push(text(node.x,node.y-32,t('Több forrás – ellenőrizendő'),10,600,'middle','#a12d24'));
       if(topology.wires.some(wire=>wire.incompatible&&(wire.fromNetId===node.net.id||wire.toNetId===node.net.id)))pieces.push(text(node.x,node.y+14,t('Hibás vezetőkapcsolat – lásd a jegyzéket'),9,600,'middle','#a12d24'));
       const branches=[...new Set(positions)];
@@ -206,14 +272,18 @@ function renderForest(forest:Forest,topology:BoardTopology,data:ProjectData,bloc
         netSegments.push({x1:x,y1:node.y,x2:x,y2:node.y+34,net:netNames.get(node.net.id)??'?'});
         if(leaf.kind==='circuit'){
           const {item,circuit}=leaf;
-          const title=`${circuit.code} · ${item.conductor} ↔ ${endpointLabel(data,item.endpoint)}`;
+          const title=`${circuit.code} · ${item.conductor} ↔ ${endpointLabel(data,item.endpoint)}\n${circuit.name}\n${circuitCableLabel(circuit)}`;
           pieces.push(`<g data-circuit-id="${xml(circuit.id)}" data-circuit-port="${xml(item.conductor)}" data-board-id="${xml(item.boardId)}"><title>${xml(title)}</title>`);
           if(forest.section==='phase')pieces.push(drawSingleLineLoadSymbol(circuit.loadType,x,node.y+34));
           else pieces.push(`<circle cx="${x}" cy="${node.y+39}" r="4" fill="#fff" stroke="#151515"/>`);
-          pieces.push(text(x+14,node.y+48,`${circuit.code} · ${circuit.name}`,11,700));
-          pieces.push(wrapped(x+14,node.y+64,circuitCableLabel(circuit),23,10));
+          const nameLines=lines(`${circuit.code} · ${circuit.name}`,20);
+          const shownName=nameLines.length>3?[...nameLines.slice(0,2),`${nameLines[2].slice(0,19)}…`]:nameLines;
+          shownName.forEach((line,index)=>pieces.push(text(x+14,node.y+48+index*14,line,11,700)));
+          const cableLines=lines(circuitCableLabel(circuit),23);
+          const shownCable=cableLines.length>2?[cableLines[0],`${cableLines[1].slice(0,22)}…`]:cableLines;
+          shownCable.forEach((line,index)=>pieces.push(text(x+14,node.y+48+shownName.length*14+index*13,line,10)));
           pieces.push('</g>');
-          blocks.push({x:x-15,y:node.y+25,width:175,height:75});
+          blocks.push({x:x-15,y:node.y+25,width:190,height:32+shownName.length*14+shownCable.length*13});
         }else if(leaf.kind==='terminal'){
           const {device,pole,side}=leaf;
           const label=endpointLabel(data,pole[side].endpoint);
@@ -227,7 +297,7 @@ function renderForest(forest:Forest,topology:BoardTopology,data:ProjectData,bloc
             pieces.push(wrapped(x+12,node.y+48,label,22,10,600));
             pieces.push(text(x+12,node.y+76,t('Szabad, bekötetlen vég'),9,600,'start','#a12d24'));
           } else if(getSingleLineDeviceRole(device)==='terminal' && pole.top.netId===pole.bottom.netId) {
-            pieces.push(drawSingleLineDeviceSymbol(device,{x,y:node.y+34,height:40}));
+            pieces.push(`<circle cx="${x}" cy="${node.y+38}" r="4" fill="#fff" stroke="#151515"/>`);
             pieces.push(wrapped(x+12,node.y+48,label,22,10,600));
           } else {
             pieces.push(`<circle cx="${x}" cy="${node.y+38}" r="4" fill="#fff" stroke="#151515"/>${text(x+12,node.y+43,label,10,600)}`);
@@ -271,17 +341,34 @@ export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):
   const boardIds=new Set(boards.map(item=>item.id));
   const edges:DeviceEdge[]=topology.devices.flatMap(({device,boardId,poles}:TopologyDevice)=>poles.filter(pole=>(!boardId||boardIds.has(boardId)) && pole.through && relevant.has(pole.top.netId) && relevant.has(pole.bottom.netId) && (pole.top.netId!==pole.bottom.netId || device.electrical?.role!=='terminal')).map(pole=>({id:JSON.stringify([device.id,pole.pole]),device,boardId,pole,a:pole.top.netId,b:pole.bottom.netId})));
   const sections:Section[]=['phase','neutral','earth','pen','mixed','unknown'];
-  let y=125,width=800;
+  let y=125,width=800,overview='';
+  const overviewBlocks:SingleLineDrawing['blocks']=[];
+  const missing=missingCircuitTerminals(topology.circuits,boardIds);
+  if(missing.length){
+    overview+=text(MARGIN,y+5,t('Hiányzó áramköri végpontok'),13,700,'start','#a12d24');y+=24;
+    for(const entry of missing){
+      const label=entry.conductor==='L'?'{circuits}: fáziskapocs nincs megadva az elosztóterven.'
+        :entry.conductor==='N'?'{circuits}: N-kapocs nincs megadva az elosztóterven.'
+          :'{circuits}: PE-kapocs nincs megadva az elosztóterven.';
+      const owner=combined?data.boards.find(item=>item.id===entry.boardId)?.name:'';
+      const message=[owner,t(label,{circuits:entry.circuits.join(', ')})].filter(Boolean).join(' · ');
+      const count=lines(message,95).length;
+      overview+=wrapped(MARGIN,y,message,95,11,400,'start','#a12d24');
+      overviewBlocks.push({x:MARGIN,y:y-12,width:716,height:count*14});
+      y+=count*14+4;
+    }
+    y+=20;
+  }
   const forests:Forest[]=[];
   for(const section of sections){
     const group=nets.filter(net=>sectionOf(net)===section);
     if(!group.length)continue;
-    const forest=makeForest(section,group,edges,topology,y,boardIds);
+    const forest=makeForest(section,group,edges,topology,data,y,boardIds);
     if(forest.width>3200||forest.height>40000||group.some(net=>remoteNets.has(net.id))){forest.omitted=true;forest.width=800;forest.height=100;}
     forests.push(forest);width=Math.max(width,forest.width);y+=forest.height;
   }
-  const blocks:SingleLineDrawing['blocks']=[],netSegments:DiagramNetSegment[]=[];
-  let content=forests.map(forest=>renderForest(forest,topology,data,blocks,netNames,netSegments)).join('');
+  const blocks:SingleLineDrawing['blocks']=[...overviewBlocks],netSegments:DiagramNetSegment[]=[];
+  let content=overview+forests.map(forest=>renderForest(forest,topology,data,blocks,netNames,netSegments)).join('');
   if(!nets.length) {content+=text(MARGIN,y+30,t(topology.devices.length?'Nincs megadott kapcsolat':'Nincs készülék az elosztóban'),15,600); y+=80;}
   // The complete connection table is an exact record of physical wires and
   // circuit terminals, including loops and multiple parallel wires. It never
@@ -302,7 +389,7 @@ export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):
   }
   for(const item of topology.circuits)for(const conflict of item.unresolved)records.push({id:`unresolved:${item.circuit.id}:${conflict.boardId}:${conflict.conductor}`,kind:t('Tisztázandó'),from:`${item.circuit.code} · ${conflict.conductor}`,to:conflict.endpoints.map(endpoint=>endpointLabel(data,endpoint)).join(' / '),detail:t('Korábbi fázisbekötés tisztázandó az elosztón.'),error:true});
   for(const forest of forests)for(const [index,edge] of forest.refs.entries())records.push({id:`pole:${edge.id}`,kind:`${t('Hurok')} ${forest.section}-${index+1}`,from:endpointLabel(data,edge.pole.top.endpoint),to:endpointLabel(data,edge.pole.bottom.endpoint),detail:`${netNames.get(edge.a)??'?'} ↔ ${netNames.get(edge.b)??'?'}`,error:false});
-  for(const item of topology.devices.filter(device=>device.poleDefinition!=='explicit'))for(const pole of item.poles)if(relevant.has(pole.top.netId)||relevant.has(pole.bottom.netId))records.push({id:`uncertain-pole:${item.device.id}:${pole.pole}`,kind:t('Pólusadat tisztázandó'),from:endpointLabel(data,pole.top.endpoint),to:endpointLabel(data,pole.bottom.endpoint),detail:t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'),error:true});
+  for(const item of topology.devices.filter(device=>device.poleDefinition!=='explicit' && device.poleDefinition!=='verified-product'))for(const pole of item.poles)if(relevant.has(pole.top.netId)||relevant.has(pole.bottom.netId))records.push({id:`uncertain-pole:${item.device.id}:${pole.pole}`,kind:t('Pólusadat tisztázandó'),from:endpointLabel(data,pole.top.endpoint),to:endpointLabel(data,pole.bottom.endpoint),detail:t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'),error:true});
   const tableWidth=Math.max(716,width-MARGIN*2), cols=[120,210,210,tableWidth-540];
   const colx=[MARGIN,MARGIN+cols[0],MARGIN+cols[0]+cols[1],MARGIN+cols[0]+cols[1]+cols[2]];
   y+=24;content+=text(MARGIN,y,t('Elosztói kapcsolatok'),15,700);y+=14;
@@ -328,6 +415,7 @@ export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):
   content+=row([t('Áramkör'),t('Megnevezés'),t('Fázisbekötés'),t('Kábel / vezeték')]);
   for(const item of topology.circuits)content+=row([item.circuit.code,item.circuit.name,circuitPhaseConnectionLabel(data,item.circuit,combined?undefined:board.id),[circuitCableLabel(item.circuit),item.circuit.powerW!==undefined?`${item.circuit.powerW.toLocaleString(getLocale())} W`:''].filter(Boolean).join(' · ')]);
   const visibleDevices=new Set<string>();
+  for(const forest of forests)if(!forest.omitted)for(const series of forest.inline.values())visibleDevices.add(series.device.id);
   for(const forest of forests)if(!forest.omitted)for(const root of forest.roots){
     const queue=[root];
     for(let i=0;i<queue.length;i++){
@@ -344,7 +432,7 @@ export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):
       const electrical=[e?.curve&&e.currentA!==undefined?`${e.curve}${e.currentA} A`:e?.currentA!==undefined?`${e.currentA} A`:'',e?.residualCurrentMa!==undefined?`${e.residualCurrentMa} mA`:'',e?.residualType?`Type ${e.residualType}`:'',e?.spdClass,e?.poles?.length?e.poles.join(' / '):''].filter(Boolean).join(' · ');
       const rating=[electrical?`${t('Beállított villamos adatok')}: ${electrical}`:'',d.rating?`${t('Szöveges névleges adat')}: ${d.rating}`:''].filter(Boolean).join('\n');
       const connected=item.poles.some(pole=>relevant.has(pole.top.netId)||relevant.has(pole.bottom.netId));
-      const note=[!connected?t('Nincs bekötve'):'',item.poleDefinition!=='explicit'?t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'):'',item.sourceSideUnspecified?t('Betáplálás iránya nincs megadva'): ''].filter(Boolean).join(' · ');
+      const note=[!connected?t('Nincs bekötve'):'',item.poleDefinition!=='explicit' && item.poleDefinition!=='verified-product'?t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'):'',item.sourceSideUnspecified?t('Betáplálás iránya nincs megadva'): ''].filter(Boolean).join(' · ');
       content+=row([d.code,[d.name,d.model,d.product?.reference].filter(Boolean).join(' · '),rating,note],undefined,Boolean(note),visibleDevices.has(d.id)?undefined:d);
     }
   }

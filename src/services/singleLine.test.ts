@@ -364,4 +364,77 @@ describe('single-line SVG', () => {
     expect(drawing.svg.match(/data-circuit-port=/g)).toHaveLength(24);
     for(const wire of board.wiring.wires)expect(drawing.svg).toContain(`data-connection-id="${wire.id}"`);
   });
+  it('shows the seven branch and eight neutral layout with long circuit names even when poles need review',()=>{
+    const {data,board}=fixture();board.connections=[];
+    const fi=makeDevice('rcd',[]);fi.electrical={role:'rccb',poles:['N','L']};
+    const breakers:Device[]=[];
+    for(let i=0;i<7;i++)breakers.push(makeDevice('breaker',breakers));
+    data.devices=[fi,...breakers];
+    board.rows[0].placements=data.devices.map((device,i)=>({deviceId:device.id,start:i}));
+    board.wiring={infeeds:[{id:'source',name:'Hálózat',kind:'supply',poles:['L','N','PE']}],buses:[
+      {id:'n',name:'N sín',conductor:'N',capacity:8,position:'bottom',terminalLabels:[]},
+      {id:'pe',name:'PE sín',conductor:'PE',capacity:8,position:'bottom',terminalLabels:[]}],wires:[
+      {id:'inL',from:{kind:'infeed',infeedId:'source',pole:0},to:{kind:'device',deviceId:fi.id,side:'top',pole:1}},
+      {id:'inN',from:{kind:'infeed',infeedId:'source',pole:1},to:{kind:'device',deviceId:fi.id,side:'top',pole:0}},
+      {id:'outN',from:{kind:'device',deviceId:fi.id,side:'bottom',pole:0},to:{kind:'bus',busId:'n',terminal:0}},
+      {id:'inPE',from:{kind:'infeed',infeedId:'source',pole:2},to:{kind:'bus',busId:'pe',terminal:0}},
+    ]};
+    for(let i=0;i<7;i++)board.wiring.wires.push({id:`w${i}`,from:{kind:'device',deviceId:fi.id,side:'bottom',pole:1},to:{kind:'device',deviceId:breakers[i].id,side:'bottom',pole:0}});
+    data.circuits=Array.from({length:8},(_,i)=>({id:`c${i}`,code:`ÁK${i+1}`,name:`Hosszú helyiségmegnevezés és további megjegyzés ${i}`,notes:'',color:'#123456',boardConnections:[{boardId:board.id,terminals:[
+      {conductor:'N' as const,endpoint:{kind:'bus' as const,busId:'n',terminal:i}},
+      ...(i<7?[{conductor:'L' as const,endpoint:{kind:'device' as const,deviceId:breakers[i].id,side:'top' as const,pole:0}}]:[]),
+    ]}]}));
+    const drawing=buildSingleLineSvg(data,board);
+    expect(drawing.width).toBeLessThanOrEqual(3200);
+    expect(drawing.svg).not.toContain('A hálózat túl nagy vagy másik elosztón keresztül folytatódik');
+    expect(drawing.svg.match(/data-circuit-port="L"/g)).toHaveLength(7);
+    expect(drawing.svg.match(/data-circuit-port="N"/g)).toHaveLength(8);
+    expect(drawing.svg).toContain('ÁK8: fáziskapocs nincs megadva az elosztóterven.');
+    expect(drawing.svg).toContain('ÁK1, ÁK2, ÁK3, ÁK4, ÁK5, ÁK6, ÁK7, ÁK8: PE-kapocs nincs megadva');
+    for(const circuit of data.circuits)expect(drawing.svg).toContain(circuit.name);
+    expect(drawing.svg).toMatch(/>ÁK1 · Hosszú<\/text><text[^>]+>helyiségmegnevezés/);
+  });
+  it('draws an explicitly series source terminal inline only without hidden source-side branches',()=>{
+    const {data,board,devices}=fixture();board.connections=[];data.circuits=[];
+    const terminal=makeDevice('custom',devices);terminal.variant='board-terminal';terminal.electrical={role:'terminal',poles:['L']};
+    devices[2].electrical={role:'mcb',poles:['L']};data.devices.push(terminal);
+    board.rows[0].placements.push({deviceId:terminal.id,start:4});
+    const source={kind:'infeed' as const,infeedId:'grid',pole:0};
+    const input={kind:'device' as const,deviceId:terminal.id,side:'bottom' as const,pole:0};
+    const output={kind:'device' as const,deviceId:terminal.id,side:'top' as const,pole:0};
+    const breaker={kind:'device' as const,deviceId:devices[2].id,side:'top' as const,pole:0};
+    board.wiring={infeeds:[{id:'grid',name:'Lakásbetáplálás',kind:'supply',poles:['L'],currentA:16}],buses:[],wires:[
+      {id:'feed',from:source,to:input},{id:'out',from:output,to:breaker},
+    ]};
+    let drawing=buildSingleLineSvg(data,board);
+    expect(drawing.svg).toContain(`data-device-id="${terminal.id}" data-pole="0" data-conductor="L" data-source-terminal="true"`);
+    expect(drawing.svg).toContain('16 A');
+    expect(drawing.svg.match(new RegExp(`data-device-id="${terminal.id}"`,'g'))).toHaveLength(1);
+    expect(drawing.svg).toContain('alsó 1 (L) ↔');
+    // A branch on the source side cannot be drawn as going through the terminal.
+    board.wiring.wires.push({id:'branch',from:source,to:breaker});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    board.wiring.wires.pop();
+    board.wiring.wires.push({id:'input-branch',from:input,to:breaker});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    board.wiring.wires.pop();
+    board.wiring.buses.push({id:'bad-n',name:'N',conductor:'N',capacity:1,terminalLabels:[],position:'top'});
+    board.wiring.wires.push({id:'invalid-branch',from:input,to:{kind:'bus',busId:'bad-n',terminal:0}});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    board.wiring.wires.pop();board.wiring.buses.pop();
+    board.wiring.infeeds.push({id:'second',name:'Másik betáp',kind:'supply',poles:['L']});
+    board.wiring.wires.push({id:'second-feed',from:{kind:'infeed',infeedId:'second',pole:0},to:output});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    board.wiring.wires.pop();board.wiring.infeeds.pop();
+    // Even a branch stored in a different board must block the inference.
+    data.boards.push({id:'remote',name:'Másik',rows:[],wiring:{infeeds:[],buses:[],wires:[{id:'remote',from:source,to:breaker}]}});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    data.boards[1].wiring!.wires=[];
+    data.circuits.push({id:'remote-circuit',code:'C2',name:'Másik',notes:'',color:'#123456',boardConnections:[{boardId:'remote',terminals:[{conductor:'L',endpoint:input}]}]});
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+    data.circuits=[];
+    data.boards.pop();
+    terminal.electrical.commonPoleGroups=[[0,1]];
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-source-terminal="true"');
+  });
 });

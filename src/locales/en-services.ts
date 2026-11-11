@@ -1,5 +1,9 @@
 /** System-generated service text only; project content is never translated. */
 export const enServices: Record<string, string> = {
+  'Hiányzó áramköri végpontok': 'Missing circuit terminals',
+  '{circuits}: fáziskapocs nincs megadva az elosztóterven.': '{circuits}: no phase terminal is specified in the board plan.',
+  '{circuits}: N-kapocs nincs megadva az elosztóterven.': '{circuits}: no N terminal is specified in the board plan.',
+  '{circuits}: PE-kapocs nincs megadva az elosztóterven.': '{circuits}: no PE terminal is specified in the board plan.',
   'Beállított villamos adatok': 'Configured electrical data',
   'Szöveges névleges adat': 'Text rating',
   'A hálózat túl nagy vagy másik elosztón keresztül folytatódik; a pontos kapcsolatok a lenti jegyzékekben szerepelnek.': 'The network is too large or continues through another board; its exact connections are listed below.',
