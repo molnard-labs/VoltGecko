@@ -28,3 +28,22 @@ test('exports circuit terminal connections and their single-line drawing without
     expect(content).not.toContain('Kapcsolatjegyzék');
   } finally { await loading.destroy(); }
 });
+
+
+test('exports a diagram for a cabinet containing only unconnected devices', async ({page}, testInfo) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }));
+  await page.goto('/');
+  await chooseSample(page);
+  await page.getByRole('button', { name: 'Mentés és export', exact: true }).click();
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Részletes szakmai PDF/ }).click();
+  const filename = testInfo.outputPath('unconnected-board.pdf');
+  await (await downloading).saveAs(filename);
+  const loading = getDocument({ data: new Uint8Array(await readFile(filename)), useSystemFonts: true });
+  const pdf = await loading.promise;
+  try {
+    const pageTexts = await Promise.all(Array.from({ length: pdf.numPages }, (_, i) => pdf.getPage(i + 1).then(page => page.getTextContent())));
+    const content = pageTexts.flatMap(page => page.items.map(item => 'str' in item ? item.str : '')).join(' ');
+    expect(content).toContain('Lakáselosztó · egyvonalas rajz');
+  } finally { await loading.destroy(); }
+});

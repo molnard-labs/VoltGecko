@@ -1,363 +1,364 @@
-import { kindLabel } from '../catalog';
-import { getLocale, t } from '../i18n';
-import { getBoardConnectionIssues, getBoardDevices } from '../data/boardConnections';
-import { endpointConductor, wiringEndpointLabel, getWiringIssues } from '../data/boardWiring';
-import { wireColorAppearance } from '../data/wireColors';
-import { circuitBelongsToBoard } from '../data/circuitBoardAssociation';
+import { t, getLocale } from '../i18n';
+import { buildBoardTopology } from '../data/boardTopology';
+import type { BoardTopology, TopologyCircuitTerminal, TopologyDevice, TopologyDevicePole, TopologyNet, TopologySource } from '../data/boardTopology';
+import { wiringEndpointLabel } from '../data/boardWiring';
 import { circuitPhaseConnectionLabel } from './circuitPhaseLabels';
-import type { Board, Circuit, Device, ProjectData, WiringEndpoint, CableDetails } from '../types';
+import type { DiagramNetSegment } from './diagramPages';
+import { drawSingleLineDeviceSymbol, drawSingleLineGroundSymbol, drawSingleLineLoadSymbol, getSingleLineDeviceRole, getSingleLinePoleLabel } from './singleLineSymbols';
+import type { Board, CableDetails, Circuit, Conductor, Device, ProjectData, WiringEndpoint } from '../types';
 
-interface GraphNode {
-  key: string;
-  device?: Device;
-  supply?: boolean;
-  label?: string;
-  detail?: string;
-  bus?: boolean;
-  circuitNode?: boolean;
-  missingId?: string;
-  incoming: number;
-  circuits: Circuit[];
-  x: number;
-  y: number;
-  height: number;
-  rank: number;
-}
-interface GraphEdge { from: string; to: string; id: string; index: number; label?:string; undirected?:boolean; color?:string; stripe?:string; unspecified?:boolean; fromPort?:string; toPort?:string }
-interface GraphPort { key:string; label:string; boardId?:string; color:string }
 export interface SingleLineDrawing {
   svg: string;
   width: number;
   height: number;
-  /** Complete card bounds let paginated exports choose cuts between devices. */
-  blocks: { x: number; y: number; width: number; height: number }[];
+  blocks: { x:number; y:number; width:number; height:number }[];
+  netSegments: DiagramNetSegment[];
 }
-const CARD_WIDTH = 264;
-const COLUMN_GAP = 60;
-const ROW_GAP = 100;
-const MARGIN = 48;
-const HEADER_HEIGHT = 170;
 
-/** All user text is XML text, including attributes and titles; SVG has no HTML. */
-const xml = (value: unknown): string => String(value ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]/g, '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!);
-const safeColor = (color: string): string => /^#[a-f\d]{6}$/i.test(color) ? color : '#287c68';
-export const cableLabel = (cable?:CableDetails):string => cable ? [cable.material, cable.designation, cable.crossSectionMm2 !== undefined ? `${cable.cores ? `${cable.cores}×` : ''}${cable.crossSectionMm2} mm²` : '', cable.lengthM !== undefined ? `${cable.lengthM} m` : ''].filter(Boolean).join(' · ') : '';
-export const circuitCableLabel=(circuit:Circuit):string=>{
+const xml = (value:unknown):string => String(value ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]/g,'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
+export const cableLabel = (cable?:CableDetails):string => cable ? [cable.material,cable.designation,cable.crossSectionMm2 !== undefined ? `${cable.cores ? `${cable.cores}×` : ''}${cable.crossSectionMm2} mm²` : '',cable.lengthM !== undefined ? `${cable.lengthM} m` : ''].filter(Boolean).join(' · ') : '';
+export const circuitCableLabel = (circuit:Circuit):string => {
   const details=circuit.cableDetails;
   if(!details)return circuit.cable??'';
   return details.designation||details.crossSectionMm2!==undefined ? cableLabel(details) : [circuit.cable,cableLabel(details)].filter(Boolean).join(' · ');
 };
-const deviceKey = (id: string): string => `device:${id}`;
-const words = (value: string, maxLength: number, maxLines: number): string[] => {
-  const remaining = Array.from(value.trim().replace(/\s+/g, ' '));
-  const lines: string[] = [];
-  while (remaining.length && lines.length < maxLines) {
-    let end = Math.min(maxLength, remaining.length);
-    if (end < remaining.length) {
-      const space = remaining.slice(0, end + 1).lastIndexOf(' ');
-      if (space >= maxLength / 2) end = space;
+function text(x:number,y:number,value:unknown,size=11,weight=400,anchor='start',fill='#161616'):string {
+  return `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" text-anchor="${anchor}" fill="${fill}">${xml(value)}</text>`;
+}
+function lines(value:string,max:number):string[] {
+  const result:string[]=[];
+  for (const paragraph of String(value || '').split('\n')) {
+    let line='';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      if (line && (line.length + 1 + word.length > max)) {result.push(line); line='';}
+      if (word.length > max) {
+        if (line) {result.push(line);line='';}
+        for (let i=0;i<word.length;i+=max) result.push(word.slice(i,i+max));
+      } else line += (line ? ' ' : '') + word;
     }
-    lines.push(remaining.splice(0, end).join('').trim());
-    while (remaining[0] === ' ') remaining.shift();
+    if (line) result.push(line);
   }
-  if (remaining.length && lines.length) lines[lines.length - 1] = `${lines.at(-1)!.slice(0, Math.max(1, maxLength - 1))}…`;
-  return lines;
-};
-function text(x: number, y: number, value: string, size = 12, fill = '#283c35', weight = 400, extra = ''): string {
-  return `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" font-weight="${weight}" ${extra}>${xml(value)}</text>`;
+  return result.length ? result : ['—'];
 }
-function wrapped(x: number, y: number, value: string, maxLength: number, maxLines: number, size = 12, fill = '#283c35', weight = 400): string {
-  return words(value, maxLength, maxLines).map((line, index) => text(x, y + index * (size + 4), line, size, fill, weight)).join('');
+function wrapped(x:number,y:number,value:string,max=22,size=11,weight=400,anchor='start',fill='#161616'):string {
+  return lines(value,max).map((line,index)=>text(x,y+index*(size+3),line,size,weight,anchor,fill)).join('');
 }
+const phase = new Set<Conductor>(['L','L1','L2','L3']);
+type Section = 'phase'|'neutral'|'earth'|'pen'|'unknown'|'mixed';
+function sectionOf(net:TopologyNet):Section {
+  const values = new Set(net.conductors);
+  if(net.conflicted)return 'mixed';
+  if (['L1','L2','L3'].filter(v=>values.has(v as Conductor)).length>1) return 'mixed';
+  if (values.has('PEN') && ![...values].some(v=>phase.has(v))) return 'pen';
+  const groups = [([...values].some(v=>phase.has(v)) ? 'phase' : ''),values.has('N')?'neutral':'',values.has('PE')?'earth':'',values.has('PEN')?'pen':''].filter(Boolean);
+  return groups.length>1?'mixed':(groups[0] as Section | undefined) ?? 'unknown';
+}
+const sectionNames:Record<Section,string>={phase:'Fázisvezetők',neutral:'Nullavezető (N)',earth:'Védővezető (PE)',pen:'PEN vezető',unknown:'Nem azonosított vezető',mixed:'Eltérő vezetőfunkciók – ellenőrizendő'};
+type DeviceEdge = { id:string; device:Device; boardId?:string; pole:TopologyDevicePole; a:string; b:string };
+type Leaf = {kind:'circuit'; item:TopologyCircuitTerminal; circuit:Circuit} | {kind:'terminal'; device:Device; pole:TopologyDevicePole; side:'top'|'bottom'; openDevice:boolean; poleUnconfirmed:boolean; remote:boolean} | {kind:'reference'; edge:DeviceEdge; other:string; reference:string};
+type Tree = {net:TopologyNet; incoming?:DeviceEdge; parent?:Tree; children:Tree[]; leaves:Leaf[]; depth:number; x:number; y:number; left:number; right:number};
+type Forest = {section:Section; roots:Tree[]; width:number; height:number; startY:number; refs:DeviceEdge[]; omitted?:boolean};
+const STEP_X=200, STEP_Y=170, MARGIN=42, LEFT=105;
 
-/** Iterative Kosaraju + DAG ranking retains every edge and never recurses on cycles. */
-function rankGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const adjacency = new Map(nodes.map(node => [node.key, [] as string[]]));
-  const reversed = new Map(nodes.map(node => [node.key, [] as string[]]));
-  for (const edge of edges) {
-    adjacency.get(edge.from)!.push(edge.to);
-    reversed.get(edge.to)!.push(edge.from);
+/** Only electrical nets and same-pole, known device paths participate in the tree.
+ * A cycle is retained as a labelled continuation reference and in the detailed
+ * connection table; it is never silently turned into a different connection. */
+function makeForest(section:Section,nets:TopologyNet[],edges:DeviceEdge[],topology:BoardTopology,startY:number,selectedBoardIds:Set<string>):Forest {
+  const map=new Map(nets.map(net=>[net.id,net]));
+  const adjacency=new Map(nets.map(net=>[net.id,[] as DeviceEdge[]]));
+  for(const edge of edges) if(map.has(edge.a)&&map.has(edge.b)) {
+    adjacency.get(edge.a)!.push(edge);
+    if(edge.b!==edge.a) adjacency.get(edge.b)!.push(edge);
   }
-  const visited = new Set<string>();
-  const order: string[] = [];
-  for (const node of nodes) {
-    if (visited.has(node.key)) continue;
-    visited.add(node.key);
-    const stack: { key: string; next: number }[] = [{ key: node.key, next: 0 }];
-    while (stack.length) {
-      const frame = stack[stack.length - 1];
-      const neighbours = adjacency.get(frame.key)!;
-      if (frame.next < neighbours.length) {
-        const next = neighbours[frame.next++];
-        if (!visited.has(next)) { visited.add(next); stack.push({ key: next, next: 0 }); }
-      } else { order.push(frame.key); stack.pop(); }
+  const connectionKey=(item:TopologyCircuitTerminal)=>JSON.stringify([item.circuitId,item.boardId,item.conductor,item.terminalKey]);
+  const selectedConnections=new Set(topology.circuits.flatMap(item=>item.connections).map(connectionKey));
+  const circuits=new Map(topology.circuits.map(item=>[item.circuit.id,item.circuit]));
+  const terminalLeaves=new Map<string,Leaf[]>();
+  const drawnEdges=new Set(edges.map(edge=>edge.id));
+  // Devices without a known through-pole are not drawn as conducting switches.
+  // Their explicit connected terminal is instead shown as an open endpoint.
+  const relevantKeys=new Set(topology.wires.flatMap(wire=>[wire.fromKey,wire.toKey]));
+  for(const item of topology.circuits) for(const connection of item.connections) relevantKeys.add(connection.terminalKey);
+  for(const item of topology.devices) for(const pole of item.poles) {
+    if(pole.through && pole.top.netId!==pole.bottom.netId && map.has(pole.top.netId) && map.has(pole.bottom.netId) && drawnEdges.has(JSON.stringify([item.device.id,pole.pole])))continue;
+    for(const side of ['top','bottom'] as const) {
+      const terminal=pole[side];
+      if(!relevantKeys.has(terminal.key)||!map.has(terminal.netId)) continue;
+      const list=terminalLeaves.get(terminal.netId)??[];
+      if(!list.some(leaf=>leaf.kind==='terminal'&&leaf.device.id===item.device.id&&leaf.pole.pole===pole.pole&&pole.top.netId===pole.bottom.netId))
+        list.push({kind:'terminal',device:item.device,pole,side,openDevice:pole.through && pole.top.netId!==pole.bottom.netId,poleUnconfirmed:item.poleDefinition!=='explicit',remote:!!item.boardId&&!selectedBoardIds.has(item.boardId)});
+      terminalLeaves.set(terminal.netId,list);
     }
   }
-  const component = new Map<string, number>();
-  let componentCount = 0;
-  for (let index = order.length - 1; index >= 0; index--) {
-    const key = order[index];
-    if (component.has(key)) continue;
-    const pending = [key];
-    component.set(key, componentCount);
-    while (pending.length) {
-      for (const neighbour of reversed.get(pending.pop()!)!) {
-        if (!component.has(neighbour)) { component.set(neighbour, componentCount); pending.push(neighbour); }
+  const seen=new Set<string>(),edgeSeen=new Set<string>(),roots:Tree[]=[],refs:DeviceEdge[]=[],nodesByNet=new Map<string,Tree>();
+  const ordered=[...nets].sort((a,b)=>Number(b.sources.length>0)-Number(a.sources.length>0)||a.id.localeCompare(b.id));
+  for(const root of ordered) {
+    if(seen.has(root.id))continue;
+    const node:Tree={net:root,children:[],leaves:[],depth:0,x:0,y:0,left:0,right:0}; roots.push(node);seen.add(root.id);nodesByNet.set(root.id,node);
+    const queue=[node];
+    for(let i=0;i<queue.length;i++) {
+      const current=queue[i];
+      for(const item of current.net.circuits) {
+        const circuit=circuits.get(item.circuitId);
+        if(item.valid && selectedConnections.has(connectionKey(item))&&circuit)current.leaves.push({kind:'circuit',item,circuit});
+      }
+      current.leaves.push(...(terminalLeaves.get(current.net.id)??[]));
+      for(const edge of adjacency.get(current.net.id)??[]) {
+        if(edgeSeen.has(edge.id))continue;
+        edgeSeen.add(edge.id);
+        const other=edge.a===current.net.id?edge.b:edge.a;
+        if(other===current.net.id||seen.has(other)) {
+          refs.push(edge);
+          const reference=`${t('Hurok')} ${section}-${refs.length}`;
+          current.leaves.push({kind:'reference',edge,other,reference});
+          const opposite=nodesByNet.get(other);
+          if(opposite && opposite!==current)opposite.leaves.push({kind:'reference',edge,other:current.net.id,reference});
+          continue;
+        }
+        const child:Tree={net:map.get(other)!,incoming:edge,parent:current,children:[],leaves:[],depth:current.depth+1,x:0,y:0,left:0,right:0};
+        current.children.push(child);queue.push(child);seen.add(other);nodesByNet.set(other,child);
       }
     }
-    componentCount++;
   }
-  const successors = Array.from({ length: componentCount }, () => new Set<number>());
-  const indegrees = new Array<number>(componentCount).fill(0);
-  const ranks = new Array<number>(componentCount).fill(0);
-  for (const edge of edges) {
-    const from = component.get(edge.from)!; const to = component.get(edge.to)!;
-    if (from !== to && !successors[from].has(to)) { successors[from].add(to); indegrees[to]++; }
-  }
-  const ready = indegrees.flatMap((degree, index) => degree === 0 ? [index] : []);
-  for (let index = 0; index < ready.length; index++) {
-    const from = ready[index];
-    for (const to of successors[from]) {
-      ranks[to] = Math.max(ranks[to], ranks[from] + 1);
-      if (--indegrees[to] === 0) ready.push(to);
+  // Iterative postorder prevents a deep installation from overflowing the stack.
+  let column=0,maxDepth=0;
+  for(const root of roots) {
+    const stack:[Tree,boolean][]=[[root,false]];
+    while(stack.length){
+      const [node,done]=stack.pop()!;maxDepth=Math.max(maxDepth,node.depth);
+      if(!done){stack.push([node,true]);for(let i=node.children.length-1;i>=0;i--)stack.push([node.children[i],false]);continue;}
+      const positions=node.children.map(child=>child.x);
+      for(const leaf of node.leaves){(leaf as Leaf & {x?:number}).x=LEFT+(column++)*STEP_X;positions.push((leaf as Leaf & {x:number}).x);}
+      if(!positions.length)positions.push(LEFT+(column++)*STEP_X);
+      node.left=Math.min(...positions);node.right=Math.max(...positions);node.x=(node.left+node.right)/2;
+      node.y=startY+90+node.depth*STEP_Y;
     }
+    column++;
   }
-  for (const node of nodes) node.rank = ranks[component.get(node.key)!];
+  return {section,roots,width:Math.max(640,LEFT+Math.max(1,column)*STEP_X+MARGIN),height:Math.max(150,150+(maxDepth+1)*STEP_Y),startY,refs};
 }
 
-function symbol(device?: Device, supply = false): string {
-  const common = 'fill="none" stroke="#161616" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
-  if (supply) return `<g ${common}><path d="M0 0V34M-10 24 0 34 10 24"/><path d="M-11 7Q-6 -1 0 7T11 7"/></g>`;
-  switch (device?.kind) {
-    case 'breaker': case 'main': case 'switch': return `<g ${common}><path d="M0 0V10M0 25V36M0 25 11 10"/><circle cy="10" r="2" fill="#fff"/><circle cy="25" r="2" fill="#fff"/>${device.kind === 'breaker' ? '<path d="M-8 19H3"/>' : ''}</g>`;
-    case 'rcd': case 'rcbo': return `<g ${common}><path d="M0 0V7M0 29V36"/><rect x="-12" y="7" width="24" height="22"/>${text(0, 22, 'IΔ', 10, '#161616', 600, 'text-anchor="middle"')}${device.kind === 'rcbo' ? '<path d="M-16 18H-12M12 18H16"/>' : ''}</g>`;
-    case 'spd': return `<g ${common}><path d="M0 0V7M0 29V36"/><rect x="-12" y="7" width="24" height="22"/><path d="M3 10-4 19H3L-3 26"/></g>`;
-    case 'relay': return `<g ${common}><path d="M0 0V7M0 29V36"/><rect x="-12" y="7" width="24" height="22"/><path d="M-9 26 9 10"/></g>`;
-    default: return `<g ${common}><path d="M0 0V7M0 29V36"/><rect x="-12" y="7" width="24" height="22" rx="2"/><path d="M-7 12 7 24M7 12-7 24"/></g>`;
-  }
+function sourceName(source:TopologySource,topology:BoardTopology,data:ProjectData):string {
+  const item=topology.infeeds.find(item=>item.infeed.id===source.infeedId),infeed=item?.infeed ?? data.boards.find(board=>board.id===source.boardId)?.wiring?.infeeds.find(infeed=>infeed.id===source.infeedId);
+  const device=data.devices.find(item=>item.id===source.deviceId);
+  const owner=data.boards.find(board=>board.id===source.boardId);
+  return [data.boards.length>1?owner?.name:'',infeed?.name ?? device?.code ?? t('Betáplálás'),`${source.pole+1} (${source.conductor})`,infeed?.currentA!==undefined?`${infeed.currentA} A`:'',cableLabel(infeed?.cable)].filter(Boolean).join(' · ');
 }
 
-/** Pure, self-contained SVG shared by the offline view, download and PDF export. */
-export function buildSingleLineSvg(data: ProjectData, board: Board, combined=false): SingleLineDrawing {
-  const devices = new Map(data.devices.map(device => [device.id, device]));
-  const boardCircuits = data.circuits.filter(circuit => combined
-    ? data.boards.some(item => circuitBelongsToBoard(data,circuit,item.id))
-    : circuitBelongsToBoard(data,circuit,board.id));
-  const nodes = new Map<string, GraphNode>();
-  const ports = new Map<string, GraphPort[]>();
-  const addPort = (nodeKey:string, port:GraphPort) => {
-    const list = ports.get(nodeKey) ?? [];
-    if (!list.some(item => item.key === port.key)) list.push(port);
-    ports.set(nodeKey,list);
-  };
-  const ensureDevice = (id: string) => {
-    const key = deviceKey(id);
-    if (!nodes.has(key)) {
-      const device = devices.get(id);
-      nodes.set(key, { key, device, missingId: device ? undefined : id, circuits: [], incoming: 0, x: 0, y: 0, height: 166, rank: 0 });
-    }
-    return key;
-  };
-  for (const row of board.rows) {
-    for (const placement of [...row.placements].sort((a, b) => a.start - b.start)) {
-      const device = devices.get(placement.deviceId);
-      if (device && device.kind !== 'blank' && device.product?.mounting !== 'accessory') ensureDevice(device.id);
+function endpointLabel(data:ProjectData,endpoint:WiringEndpoint):string {
+  const owner=data.boards.find(board=>endpoint.kind==='device'
+    ? board.rows.some(row=>row.placements.some(item=>item.deviceId===endpoint.deviceId)) || data.devices.some(device=>device.id===endpoint.deviceId&&device.boardId===board.id)
+    : endpoint.kind==='bus' ? board.wiring?.buses.some(bus=>bus.id===endpoint.busId)
+      : board.wiring?.infeeds.some(source=>source.id===endpoint.infeedId));
+  return [data.boards.length>1?owner?.name:'',wiringEndpointLabel(data,endpoint)].filter(Boolean).join(' · ');
+}
+
+function renderForest(forest:Forest,topology:BoardTopology,data:ProjectData,blocks:SingleLineDrawing['blocks'],netNames:Map<string,string>,netSegments:DiagramNetSegment[]):string {
+  const pieces:string[]=[];
+  if(forest.omitted)return text(MARGIN,forest.startY+26,t(sectionNames[forest.section]),15,700)+wrapped(MARGIN,forest.startY+49,t('A hálózat túl nagy vagy másik elosztón keresztül folytatódik; a pontos kapcsolatok a lenti jegyzékekben szerepelnek.'),90,11);
+  const buses=new Map<string,string[]>();
+  for(const item of topology.buses){const names=buses.get(item.netId)??[];names.push(`${item.bus.name} (${item.bus.conductor})`);buses.set(item.netId,names);}
+  pieces.push(text(MARGIN,forest.startY+26,t(sectionNames[forest.section]),15,700));
+  if(forest.section==='mixed')pieces.push(text(MARGIN,forest.startY+46,t('Eltérő vezetők egy hálózatra kerültek; ellenőrizd a bekötést.'),11,600,'start','#a12d24'));
+  for(const root of forest.roots){
+    const queue=[root];
+    if(!root.net.sources.length&&!root.net.reachable)pieces.push(text(root.x,root.y-48,t('Betáplálás nem igazolt'),10,600,'middle','#a12d24'));
+    for(let i=0;i<queue.length;i++){
+      const node=queue[i];queue.push(...node.children);
+      const positions=[node.x,...node.children.map(child=>child.x),...node.leaves.map(leaf=>(leaf as Leaf & {x:number}).x)];
+      const left=Math.min(...positions),right=Math.max(...positions);
+      if(right>left){pieces.push(`<path d="M${left} ${node.y}H${right}" fill="none" stroke="#151515" stroke-width="1.5" data-net-id="${xml(node.net.id)}"/>`);netSegments.push({x1:left,y1:node.y,x2:right,y2:node.y,net:netNames.get(node.net.id)??'?'});}
+      else pieces.push(`<circle cx="${node.x}" cy="${node.y}" r="2.5" fill="#151515" data-net-id="${xml(node.net.id)}"/>`);
+      const netLabel=[netNames.get(node.net.id),...(buses.get(node.net.id)??[]),...node.net.sources.map(source=>sourceName(source,topology,data))].filter(Boolean).join(' · ');
+      if(netLabel)pieces.push(wrapped(node.x,node.y-16-(lines(netLabel,29).length-1)*13,netLabel,29,10,600,'middle',forest.section==='mixed'||node.net.conflicted?'#a12d24':'#161616'));
+      if(netLabel)blocks.push({x:node.x-90,y:node.y-27-(lines(netLabel,29).length-1)*13,width:180,height:lines(netLabel,29).length*13});
+      if(node.net.sources.length>1)pieces.push(text(node.x,node.y-32,t('Több forrás – ellenőrizendő'),10,600,'middle','#a12d24'));
+      if(topology.wires.some(wire=>wire.incompatible&&(wire.fromNetId===node.net.id||wire.toNetId===node.net.id)))pieces.push(text(node.x,node.y+14,t('Hibás vezetőkapcsolat – lásd a jegyzéket'),9,600,'middle','#a12d24'));
+      const branches=[...new Set(positions)];
+      if(right>left)for(const x of branches)pieces.push(`<circle cx="${x}" cy="${node.y}" r="2.5" fill="#151515"/>`);
+      for(const child of node.children){
+        const edge=child.incoming!,p=edge.pole;
+        const sourceIsTop=p.top.netId===node.net.id;
+        const a=sourceIsTop?p.top.endpoint:p.bottom.endpoint,b=sourceIsTop?p.bottom.endpoint:p.top.endpoint;
+        const owner=data.boards.find(item=>item.id===edge.boardId);
+        const symbolY=node.y+28,symbolHeight=52;
+        pieces.push(`<path d="M${child.x} ${node.y}V${symbolY}" fill="none" stroke="#151515" stroke-width="1.4"/>`);
+        netSegments.push({x1:child.x,y1:node.y,x2:child.x,y2:symbolY,net:netNames.get(node.net.id)??'?'});
+        pieces.push(`<g data-device-id="${xml(edge.device.id)}" data-pole="${p.pole}" data-conductor="${xml(p.conductor)}" tabindex="0" role="button" aria-label="${xml(`${edge.device.code} · ${edge.device.name}`)}"><title>${xml(`${edge.device.code} · ${edge.device.name}\n${endpointLabel(data,a)} ↔ ${endpointLabel(data,b)}`)}</title>${drawSingleLineDeviceSymbol(edge.device,{x:child.x,y:symbolY,height:symbolHeight})}</g>`);
+        pieces.push(`<path d="M${child.x} ${symbolY+symbolHeight}V${child.y}" fill="none" stroke="#151515" stroke-width="1.4"/>`);
+        netSegments.push({x1:child.x,y1:symbolY+symbolHeight,x2:child.x,y2:child.y,net:netNames.get(child.net.id)??'?'});
+        pieces.push(text(child.x+13,symbolY+12,[data.boards.length>1?owner?.name:'',edge.device.code].filter(Boolean).join(' · '),12,700));
+        const e=edge.device.electrical;
+        const rating=[e?.curve&&e.currentA!==undefined?`${e.curve}${e.currentA} A`:e?.currentA!==undefined?`${e.currentA} A`:'',e?.residualCurrentMa!==undefined?`${e.residualCurrentMa} mA`:'',e?.residualType?`Type ${e.residualType}`:'',e?.spdClass].filter(Boolean).join(' · ');
+        const shortLines=(value:string,max:number,count:number)=>{
+          const result=lines(value,max);
+          return result.length>count?[...result.slice(0,count-1),`${result[count-1].slice(0,max-1)}…`]:result;
+        };
+        shortLines(rating||edge.device.rating||edge.device.name,21,2).forEach((line,index)=>pieces.push(text(child.x+13,symbolY+27+index*13,line,10)));
+        const terminalLines=shortLines(`${wiringEndpointLabel(data,a)} ↔ ${wiringEndpointLabel(data,b)}`,23,3);
+        terminalLines.forEach((line,index)=>pieces.push(text(child.x+13,symbolY+62+index*12,line,9)));
+        const poles=getSingleLinePoleLabel(edge.device);if(poles)pieces.push(text(child.x+13,symbolY+62+terminalLines.length*12,poles,9));
+        blocks.push({x:child.x-14,y:symbolY-5,width:175,height:120});
+      }
+      for(const leaf of node.leaves){
+        const x=(leaf as Leaf & {x:number}).x;
+        pieces.push(`<path d="M${x} ${node.y}V${node.y+34}" fill="none" stroke="#151515" stroke-width="1.3"/>`);
+        netSegments.push({x1:x,y1:node.y,x2:x,y2:node.y+34,net:netNames.get(node.net.id)??'?'});
+        if(leaf.kind==='circuit'){
+          const {item,circuit}=leaf;
+          const title=`${circuit.code} · ${item.conductor} ↔ ${endpointLabel(data,item.endpoint)}`;
+          pieces.push(`<g data-circuit-id="${xml(circuit.id)}" data-circuit-port="${xml(item.conductor)}" data-board-id="${xml(item.boardId)}"><title>${xml(title)}</title>`);
+          if(forest.section==='phase')pieces.push(drawSingleLineLoadSymbol(circuit.loadType,x,node.y+34));
+          else pieces.push(`<circle cx="${x}" cy="${node.y+39}" r="4" fill="#fff" stroke="#151515"/>`);
+          pieces.push(text(x+14,node.y+48,`${circuit.code} · ${circuit.name}`,11,700));
+          pieces.push(wrapped(x+14,node.y+64,circuitCableLabel(circuit),23,10));
+          pieces.push('</g>');
+          blocks.push({x:x-15,y:node.y+25,width:175,height:75});
+        }else if(leaf.kind==='terminal'){
+          const {device,pole,side}=leaf;
+          const label=endpointLabel(data,pole[side].endpoint);
+          pieces.push(`<g data-device-id="${xml(device.id)}" tabindex="0" role="button" aria-label="${xml(`${device.code} · ${device.name}`)}"><title>${xml(label)}</title>`);
+          if(leaf.remote) {
+            pieces.push(`<circle cx="${x}" cy="${node.y+38}" r="4" fill="#fff" stroke="#151515"/>${wrapped(x+12,node.y+43,label,22,10,600)}`);
+            pieces.push(wrapped(x+12,node.y+57,t('Távoli elosztó – folytatás az összes elosztó nézetben.'),24,9,600));
+          } else if(leaf.openDevice) {
+            pieces.push(drawSingleLineDeviceSymbol(device,{x,y:node.y+34,height:42}));
+            pieces.push(`<circle cx="${x}" cy="${node.y+76}" r="4" fill="#fff" stroke="#151515"/>`);
+            pieces.push(wrapped(x+12,node.y+48,label,22,10,600));
+            pieces.push(text(x+12,node.y+76,t('Szabad, bekötetlen vég'),9,600,'start','#a12d24'));
+          } else if(getSingleLineDeviceRole(device)==='terminal' && pole.top.netId===pole.bottom.netId) {
+            pieces.push(drawSingleLineDeviceSymbol(device,{x,y:node.y+34,height:40}));
+            pieces.push(wrapped(x+12,node.y+48,label,22,10,600));
+          } else {
+            pieces.push(`<circle cx="${x}" cy="${node.y+38}" r="4" fill="#fff" stroke="#151515"/>${text(x+12,node.y+43,label,10,600)}`);
+            if(leaf.poleUnconfirmed)pieces.push(wrapped(x+12,node.y+57,t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'),24,9,600,'start','#a12d24'));
+            else if(!pole.through)pieces.push(text(x+12,node.y+57,t('A belső kapcsolat nem ismert'),9,400,'start','#a12d24'));
+          }
+          pieces.push('</g>');blocks.push({x:x-12,y:node.y+28,width:175,height:62});
+        }else{
+          pieces.push(`<circle cx="${x}" cy="${node.y+38}" r="4" fill="#fff" stroke="#151515"/>`);
+          pieces.push(wrapped(x+12,node.y+43,`${leaf.reference} · ${endpointLabel(data,leaf.edge.pole.top.endpoint)} ↔ ${endpointLabel(data,leaf.edge.pole.bottom.endpoint)} → ${netNames.get(leaf.other)??'?'}`,22,10,600));
+        }
+      }
+      if(forest.section==='earth' && node.net.sources.some(source=>source.kind==='earth')) {
+        const gx=node.right+35;
+        pieces.push(`<path d="M${node.right} ${node.y}H${gx}V${node.y+18}" fill="none" stroke="#151515" stroke-width="1.4"/>${drawSingleLineGroundSymbol(gx,node.y+18)}`);
+      }
     }
   }
-  for (const device of getBoardDevices(board, data.devices)) ensureDevice(device.id);
-  // A legacy device-level feed lacks terminal and conductor details. Even a
-  // physical wire between the same devices may be a different conductor, so
-  // preserve and distinguish the incomplete link until the user removes it.
-  const edges: GraphEdge[] = (board.connections ?? []).map((connection, index) => {
-    const from = connection.fromDeviceId !== undefined ? ensureDevice(connection.fromDeviceId) : 'supply';
-    if (from === 'supply' && !nodes.has(from)) nodes.set(from, { key: from, supply: true, incoming: 0, circuits: [], x: 0, y: 0, height: 118, rank: 0 });
-    const to = ensureDevice(connection.toDeviceId);
-    nodes.get(to)!.incoming++;
-    return { from, to, id: connection.id, index, unspecified:true };
+  return pieces.join('');
+}
+
+/** Pure SVG shared by the application, SVG/PNG export and the PDF. */
+export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):SingleLineDrawing {
+  const boards=combined?data.boards:[board],topology=buildBoardTopology(data,boards);
+  const relevant=new Set<string>();
+  for(const bus of topology.buses)relevant.add(bus.netId);
+  for(const source of topology.infeeds)for(const pole of source.poles)relevant.add(pole.netId);
+  for(const wire of topology.wires){relevant.add(wire.fromNetId);relevant.add(wire.toNetId);}
+  for(const circuit of topology.circuits)for(const item of circuit.connections)relevant.add(item.netId);
+  // A globally connected net can cross a remote board and return. In a local
+  // board view, do not turn that remote route into a fictitious local bus.
+  // Include the concrete remote wires in the schedule and use the explicit
+  // net/terminal schedule instead of a condensed rail for affected sections.
+  const fullTopology=!combined&&data.boards.length>1?buildBoardTopology(data,data.boards):topology;
+  const wireKey=(item:{boardId:string;wire:{id:string}})=>JSON.stringify([item.boardId,item.wire.id]);
+  const displayedWireKeys=new Set(topology.wires.map(wireKey));
+  const remoteWires=fullTopology.wires.filter(item=>!displayedWireKeys.has(wireKey(item))&&(relevant.has(item.fromNetId)||relevant.has(item.toNetId)));
+  const remoteNets=new Set(remoteWires.flatMap(item=>[item.fromNetId,item.toNetId]));
+  const nets=topology.nets.filter(net=>relevant.has(net.id));
+  const netNames=new Map([...nets].sort((a,b)=>a.id.localeCompare(b.id)).map((net,index)=>[net.id,`H${index+1}`]));
+  const boardIds=new Set(boards.map(item=>item.id));
+  const edges:DeviceEdge[]=topology.devices.flatMap(({device,boardId,poles}:TopologyDevice)=>poles.filter(pole=>(!boardId||boardIds.has(boardId)) && pole.through && relevant.has(pole.top.netId) && relevant.has(pole.bottom.netId) && (pole.top.netId!==pole.bottom.netId || device.electrical?.role!=='terminal')).map(pole=>({id:JSON.stringify([device.id,pole.pole]),device,boardId,pole,a:pole.top.netId,b:pole.bottom.netId})));
+  const sections:Section[]=['phase','neutral','earth','pen','mixed','unknown'];
+  let y=125,width=800;
+  const forests:Forest[]=[];
+  for(const section of sections){
+    const group=nets.filter(net=>sectionOf(net)===section);
+    if(!group.length)continue;
+    const forest=makeForest(section,group,edges,topology,y,boardIds);
+    if(forest.width>3200||forest.height>40000||group.some(net=>remoteNets.has(net.id))){forest.omitted=true;forest.width=800;forest.height=100;}
+    forests.push(forest);width=Math.max(width,forest.width);y+=forest.height;
+  }
+  const blocks:SingleLineDrawing['blocks']=[],netSegments:DiagramNetSegment[]=[];
+  let content=forests.map(forest=>renderForest(forest,topology,data,blocks,netNames,netSegments)).join('');
+  if(!nets.length) {content+=text(MARGIN,y+30,t(topology.devices.length?'Nincs megadott kapcsolat':'Nincs készülék az elosztóban'),15,600); y+=80;}
+  // The complete connection table is an exact record of physical wires and
+  // circuit terminals, including loops and multiple parallel wires. It never
+  // invents a source direction or merges unconnected conductor nets.
+  const records:{id:string;kind:string;from:string;to:string;detail:string;error:boolean}[]=[];
+  for(const item of [...topology.wires,...remoteWires]){
+    const {wire}=item;
+    const owner=data.boards.find(board=>board.id===item.boardId);
+    records.push({id:wire.id,kind:[t('Vezeték'),data.boards.length>1?owner?.name:''].filter(Boolean).join(' · '),from:endpointLabel(data,wire.from),to:endpointLabel(data,wire.to),detail:[cableLabel(wire.cable),wire.label].filter(Boolean).join(' · '),error:!item.valid||item.incompatible});
+  }
+  for(const item of topology.circuits)for(const connection of item.connections)records.push({
+    id:`circuit:${item.circuit.id}:${connection.boardId}:${connection.conductor}`,kind:t('Áramkör'),from:`${item.circuit.code} · ${connection.conductor}`,to:endpointLabel(data,connection.endpoint),detail:circuitCableLabel(item.circuit),error:!connection.valid
   });
-  const ensureEndpoint = (endpoint:WiringEndpoint):string => {
-    if(endpoint.kind==='device') return ensureDevice(endpoint.deviceId);
-    const key = endpoint.kind==='bus' ? `bus:${endpoint.busId}` : `infeed:${endpoint.infeedId}`;
-    if(!nodes.has(key)) {
-      const bus=endpoint.kind==='bus' ? data.boards.flatMap(item=>item.wiring?.buses??[]).find(item=>item.id===endpoint.busId) : undefined;
-      const infeed=endpoint.kind==='infeed' ? data.boards.flatMap(item=>item.wiring?.infeeds??[]).find(item=>item.id===endpoint.infeedId) : undefined;
-      const label=bus?.name??infeed?.name??t('Hiányzó végpont');
-      const owner=data.boards.find(item=>item.wiring?.buses.some(value=>value.id===bus?.id)||item.wiring?.infeeds.some(value=>value.id===infeed?.id));
-      const detail=[owner?.name,bus ? `${bus.conductor} · ${bus.capacity} ${t('kapocs')}` : infeed ? [infeed.poles.join(' / '),infeed.currentA !== undefined ? `${infeed.currentA} A` : '',cableLabel(infeed.cable)].filter(Boolean).join(' · ') : t('A kapcsolat végpontja nem található a projektben.')].filter(Boolean).join(' · ');
-      nodes.set(key,{key,label,detail,bus:!!bus,supply:infeed?.kind==='supply',incoming:0,circuits:[],x:0,y:0,height:132,rank:0});
-    }
-    return key;
+  for(const legacy of topology.legacy){
+    const from=legacy.connection.fromDeviceId ? data.devices.find(item=>item.id===legacy.connection.fromDeviceId)?.code ?? legacy.connection.fromDeviceId : boards.find(item=>item.id===legacy.boardId)?.supplyLabel || t('Betáplálás');
+    const to=data.devices.find(item=>item.id===legacy.connection.toDeviceId)?.code ?? legacy.connection.toDeviceId;
+    records.push({id:legacy.connection.id,kind:t('Részletezetlen kapcsolat'),from,to,detail:t('A pontos kapcsok nincsenek megadva.'),error:true});
+  }
+  for(const item of topology.circuits)for(const conflict of item.unresolved)records.push({id:`unresolved:${item.circuit.id}:${conflict.boardId}:${conflict.conductor}`,kind:t('Tisztázandó'),from:`${item.circuit.code} · ${conflict.conductor}`,to:conflict.endpoints.map(endpoint=>endpointLabel(data,endpoint)).join(' / '),detail:t('Korábbi fázisbekötés tisztázandó az elosztón.'),error:true});
+  for(const forest of forests)for(const [index,edge] of forest.refs.entries())records.push({id:`pole:${edge.id}`,kind:`${t('Hurok')} ${forest.section}-${index+1}`,from:endpointLabel(data,edge.pole.top.endpoint),to:endpointLabel(data,edge.pole.bottom.endpoint),detail:`${netNames.get(edge.a)??'?'} ↔ ${netNames.get(edge.b)??'?'}`,error:false});
+  for(const item of topology.devices.filter(device=>device.poleDefinition!=='explicit'))for(const pole of item.poles)if(relevant.has(pole.top.netId)||relevant.has(pole.bottom.netId))records.push({id:`uncertain-pole:${item.device.id}:${pole.pole}`,kind:t('Pólusadat tisztázandó'),from:endpointLabel(data,pole.top.endpoint),to:endpointLabel(data,pole.bottom.endpoint),detail:t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'),error:true});
+  const tableWidth=Math.max(716,width-MARGIN*2), cols=[120,210,210,tableWidth-540];
+  const colx=[MARGIN,MARGIN+cols[0],MARGIN+cols[0]+cols[1],MARGIN+cols[0]+cols[1]+cols[2]];
+  y+=24;content+=text(MARGIN,y,t('Elosztói kapcsolatok'),15,700);y+=14;
+  const row=(values:string[],id?:string,error=false,device?:Device)=>{
+    const wrappedValues=values.map((value,index)=>lines(value,Math.max(10,Math.floor((cols[index]-12)/6))));
+    const h=Math.max(28,Math.max(...wrappedValues.map(value=>value.length))*14+12);
+    const title=values.join(' · ');
+    let s=`<g${id?` data-connection-id="${xml(id)}"`:''}${device?` data-device-id="${xml(device.id)}" tabindex="0" role="button" aria-label="${xml(`${device.code} · ${device.name}`)}"`:''}><title>${xml(title)}</title><rect x="${MARGIN}" y="${y}" width="${tableWidth}" height="${h}" fill="${error?'#fff8f5':'#fff'}" stroke="#777" stroke-width="0.7"/>`;
+    for(let col=1;col<4;col++)s+=`<path d="M${colx[col]} ${y}V${y+h}" stroke="#999" stroke-width="0.7"/>`;
+    if(id?.startsWith('uncertain-pole:'))s+=`<path d="M${colx[2]-25} ${y+h-7}h18" stroke="#a12d24" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+    wrappedValues.forEach((value,col)=>value.forEach((line,index)=>{s+=text(colx[col]+6,y+18+index*14,line,10,400,'start',error?'#932a23':'#161616');}));
+    s+='</g>';for(let col=0;col<4;col++)blocks.push({x:colx[col],y,width:cols[col],height:h});y+=h;return s;
   };
-  for(const bus of board.wiring?.buses??[]) ensureEndpoint({kind:'bus',busId:bus.id,terminal:0});
-  for(const infeed of board.wiring?.infeeds??[]) ensureEndpoint({kind:'infeed',infeedId:infeed.id,pole:0});
-  for(const wire of board.wiring?.wires??[]) {
-    const from=ensureEndpoint(wire.from),to=ensureEndpoint(wire.to);
-    const appearance=wireColorAppearance(wire,endpointConductor(data,wire.from)??'L');
-    // Physical wire order never asserts a supply direction. Keep every conductor,
-    // same-device bridge and repeated edge; no spanning-tree inference occurs.
-    nodes.get(from)!.incoming++; nodes.get(to)!.incoming++;
-    edges.push({from,to,id:wire.id,index:edges.length,undirected:true,color:appearance.color,stripe:appearance.stripe,
-      label:[`${wiringEndpointLabel(data,wire.from)} ↔ ${wiringEndpointLabel(data,wire.to)}`,cableLabel(wire.cable),wire.label].filter(Boolean).join(' · ')});
+  content+=row([t('Típus'),t('Egyik végpont'),t('Másik végpont'),t('Adatok')]);
+  for(const record of records)content+=row([record.kind,record.from,record.to,record.detail],record.id,record.error);
+  if(forests.some(forest=>forest.omitted)){
+    y+=28;content+=text(MARGIN,y,t('Hálózatok és készülékpólusok'),15,700);y+=14;
+    content+=row([t('Hálózat'),t('Kapcsok'),t('Vezető'),t('Adatok')]);
+    for(const net of nets)content+=row([netNames.get(net.id)??'',net.terminals.map(terminal=>endpointLabel(data,terminal.endpoint)).join(' · '),net.conductors.join(' / '),net.sources.map(source=>sourceName(source,topology,data)).join(' · ')]);
+    for(const edge of edges)content+=row([t('Készülékpólus'),endpointLabel(data,edge.pole.top.endpoint),endpointLabel(data,edge.pole.bottom.endpoint),`${netNames.get(edge.a)??'?'} ↔ ${netNames.get(edge.b)??'?'}`]);
   }
-  // Circuit endpoints are real cabinet associations, independently of floor routes.
-  for (const circuit of boardCircuits) {
-    const key = `circuit:${circuit.id}`;
-    nodes.set(key,{key,label:t('Áramkör'),circuitNode:true,incoming:0,circuits:[circuit],x:0,y:0,height:130,rank:0});
-    const connections = (circuit.boardConnections ?? []).filter(item => combined || item.boardId === board.id);
-    const terminals = connections.flatMap(connection => connection.terminals.map(terminal => ({...terminal,boardId:connection.boardId})));
-    for (const item of terminals) {
-      const from = ensureEndpoint(item.endpoint), appearance = wireColorAppearance({},item.conductor);
-      const endpoint = item.endpoint;
-      const fromPort = endpoint.kind === 'device' ? JSON.stringify(['device',endpoint.deviceId,endpoint.side,endpoint.pole])
-        : endpoint.kind === 'bus' ? JSON.stringify(['bus',endpoint.busId,endpoint.terminal]) : JSON.stringify(['infeed',endpoint.infeedId,endpoint.pole]);
-      const toPort = JSON.stringify([item.boardId,item.conductor]);
-      addPort(from,{key:fromPort,label:item.conductor,color:appearance.color});
-      addPort(key,{key:toPort,label:item.conductor,boardId:item.boardId,color:appearance.color});
-      nodes.get(from)!.incoming++; nodes.get(key)!.incoming++;
-      edges.push({from,to:key,id:`circuit:${circuit.id}:${item.boardId}:${item.conductor}`,index:edges.length,undirected:true,
-        color:appearance.color,stripe:appearance.stripe,fromPort,toPort,
-        label:`${circuit.code} · ${item.conductor} ↔ ${wiringEndpointLabel(data,item.endpoint)}`});
+  y+=28;content+=text(MARGIN,y,t('Áramkörjegyzék'),15,700);y+=14;
+  content+=row([t('Áramkör'),t('Megnevezés'),t('Fázisbekötés'),t('Kábel / vezeték')]);
+  for(const item of topology.circuits)content+=row([item.circuit.code,item.circuit.name,circuitPhaseConnectionLabel(data,item.circuit,combined?undefined:board.id),[circuitCableLabel(item.circuit),item.circuit.powerW!==undefined?`${item.circuit.powerW.toLocaleString(getLocale())} W`:''].filter(Boolean).join(' · ')]);
+  const visibleDevices=new Set<string>();
+  for(const forest of forests)if(!forest.omitted)for(const root of forest.roots){
+    const queue=[root];
+    for(let i=0;i<queue.length;i++){
+      const node=queue[i];queue.push(...node.children);
+      for(const child of node.children)if(child.incoming)visibleDevices.add(child.incoming.device.id);
+      for(const leaf of node.leaves)if(leaf.kind==='terminal')visibleDevices.add(leaf.device.id);
     }
   }
-  // Place the supply first regardless of the order in which a connection was entered.
-  const ordered = [...nodes.values()].sort((a, b) => Number(!!b.supply) - Number(!!a.supply));
-  // Physical conductors have no entered direction. Rank them from their nearest
-  // source solely for layout; reversing click order cannot move a supply below
-  // its consumers. Explicit device-level feed directions remain authoritative.
-  const adjacency=new Map(ordered.map(node=>[node.key,[] as string[]]));
-  for(const edge of edges){adjacency.get(edge.from)!.push(edge.to);if(edge.undirected)adjacency.get(edge.to)!.push(edge.from);}
-  const distances=new Map<string,number>(),queue:string[]=[];
-  const visit=()=>{for(let index=0;index<queue.length;index++){const key=queue[index];for(const target of adjacency.get(key)??[])if(!distances.has(target)){distances.set(target,distances.get(key)!+1);queue.push(target);}}queue.length=0;};
-  for(const node of ordered.filter(node=>node.supply)){distances.set(node.key,0);queue.push(node.key);}visit();
-  for(const node of ordered)if(!distances.has(node.key)){distances.set(node.key,0);queue.push(node.key);visit();}
-  const rankingEdges=edges.map(edge=>edge.undirected&&((distances.get(edge.from)!>distances.get(edge.to)!)||(distances.get(edge.from)===distances.get(edge.to)&&edge.from>edge.to))?{...edge,from:edge.to,to:edge.from}:edge);
-  rankGraph(ordered, rankingEdges);
-  const layers = new Map<number, GraphNode[]>();
-  for (const node of ordered) { const layer = layers.get(node.rank) ?? []; layer.push(node); layers.set(node.rank, layer); }
-  const maxColumns = 6;
-  const columns = Math.min(maxColumns, [...layers.values()].reduce((count, layer) => Math.max(count, layer.length), 1));
-  const cardWidth = Math.max(CARD_WIDTH,...[...ports.values()].map(items => 36 + (items.length + 1) * 22));
-  const contentWidth = columns * cardWidth + Math.max(0, columns - 1) * COLUMN_GAP;
-  let bottom = HEADER_HEIGHT;
-  for (const [, layer] of [...layers.entries()].sort(([a], [b]) => a - b)) {
-    for (let offset = 0; offset < layer.length; offset += maxColumns) {
-      const row = layer.slice(offset, offset + maxColumns);
-      const rowWidth = row.length * cardWidth + (row.length - 1) * COLUMN_GAP;
-      row.forEach((node, index) => { node.x = MARGIN + (contentWidth - rowWidth) / 2 + index * (cardWidth + COLUMN_GAP); node.y = bottom; });
-      bottom += Math.max(...row.map(node => node.height)) + ROW_GAP;
+  if(topology.devices.length){
+    y+=28;content+=text(MARGIN,y,t('Készülékjegyzék'),15,700);y+=14;
+    content+=row([t('Készülék'),t('Megnevezés'),t('Villamos adatok'),t('Állapot / megjegyzés')]);
+    for(const item of topology.devices){
+      const d=item.device,e=d.electrical;
+      const electrical=[e?.curve&&e.currentA!==undefined?`${e.curve}${e.currentA} A`:e?.currentA!==undefined?`${e.currentA} A`:'',e?.residualCurrentMa!==undefined?`${e.residualCurrentMa} mA`:'',e?.residualType?`Type ${e.residualType}`:'',e?.spdClass,e?.poles?.length?e.poles.join(' / '):''].filter(Boolean).join(' · ');
+      const rating=[electrical?`${t('Beállított villamos adatok')}: ${electrical}`:'',d.rating?`${t('Szöveges névleges adat')}: ${d.rating}`:''].filter(Boolean).join('\n');
+      const connected=item.poles.some(pole=>relevant.has(pole.top.netId)||relevant.has(pole.bottom.netId));
+      const note=[!connected?t('Nincs bekötve'):'',item.poleDefinition!=='explicit'?t('Pólusadat nincs megerősítve – állítsd be a készüléknél.'):'',item.sourceSideUnspecified?t('Betáplálás iránya nincs megadva'): ''].filter(Boolean).join(' · ');
+      content+=row([d.code,[d.name,d.model,d.product?.reference].filter(Boolean).join(' · '),rating,note],undefined,Boolean(note),visibleDevices.has(d.id)?undefined:d);
     }
   }
-  if (!ordered.length) bottom = HEADER_HEIGHT + 170;
-  const lookup = new Map(ordered.map(node => [node.key, node]));
-  const rowBottoms = new Map<number, number>();
-  for (const node of ordered) rowBottoms.set(node.y, Math.max(rowBottoms.get(node.y) ?? 0, node.y + node.height));
-  let outerLaneCount = 0;
-  const portX = (node:GraphNode,key:string) => {
-    const offset = 18 + (ports.get(node.key)?.findIndex(item => item.key === key) ?? 0) * 22;
-    // Keep terminals clear of an existing device's central schematic axis.
-    return node.x + offset + (!node.circuitNode && offset >= cardWidth / 2 - 12 ? 22 : 0);
-  };
-  const paths = edges.map(edge => {
-    const from = lookup.get(edge.from)!; const to = lookup.get(edge.to)!;
-    const sx = edge.fromPort ? portX(from,edge.fromPort) : from.x + cardWidth / 2; const sy = from.y + from.height;
-    const tx = edge.toPort ? portX(to,edge.toPort) : to.x + cardWidth / 2; const ty = to.y;
-    let path: string; let labelX: number; let labelY: number;
-    if (to.rank === from.rank + 1 && ty > sy && ty - sy <= ROW_GAP + 2) {
-      const channel = sy + 24 + (edge.index % 7) * 7;
-      path = `M${sx} ${sy}V${channel}H${tx}V${ty - 5}`;
-      labelX = sx + 8; labelY = channel - 6;
-    } else {
-      // Reuse an outside channel after 24 lanes so dense imports do not create an unbounded page width.
-      const lane = MARGIN + contentWidth + 30 + (outerLaneCount++ % 24) * 13;
-      const startY = rowBottoms.get(from.y)! + 24 + (edge.index % 5) * 7;
-      const topY = to.y - 24 - (edge.index % 5) * 7;
-      path = `M${sx} ${sy}V${startY}H${lane}V${topY}H${tx}V${ty - 5}`;
-      labelX = lane + 4; labelY = startY - 5;
-    }
-    const fromName = from.label || (from.supply ? board.supplyLabel || t('Betáplálás') : from.device?.code || from.missingId || '—');
-    const toName = to.label || to.device?.code || to.missingId || '—';
-    const title=edge.label || `${t('Részletezetlen kapcsolat')}: ${fromName} → ${toName}`;
-    const stripe=edge.stripe?`<path d="${path}" fill="none" stroke="${safeColor(edge.stripe)}" stroke-width="1.8" stroke-dasharray="7 7"/>`:'';
-    return `<g data-connection-id="${xml(edge.id)}" data-connection-index="${edge.index}"><title>${xml(title)}</title><path d="${path}" fill="none" stroke="${safeColor(edge.color??'#161616')}" stroke-width="1.8"${edge.unspecified?' stroke-dasharray="6 4"':''}${edge.undirected?'':' marker-end="url(#single-line-arrow)"'}/>${stripe}${text(labelX, labelY, String(edge.index + 1), 10, '#333333')}</g>`;
-  }).join('');
-  const issues = [...getBoardConnectionIssues(board, data.devices).filter(issue=>!combined||issue.kind!=='other-board'), ...(combined?data.boards.flatMap(item=>getWiringIssues(data,item)):getWiringIssues(data,board))];
-  const noticeLines = issues.slice(0, 8).flatMap(issue => words(issue.message, Math.floor(contentWidth / 7), 2));
-  if (issues.length > 8) noticeLines.push(t('{count} további jelzés az alkalmazásban.', { count: issues.length - 8 }));
-  const footerY = bottom + 5;
-  const width = Math.ceil(Math.max(640, MARGIN * 2 + contentWidth + (outerLaneCount ? 44 + Math.min(24, outerLaneCount) * 13 : 0)));
-  const circuitRows = ordered.flatMap(node => node.circuits.map(circuit => ({node,circuit})));
-  const seenCircuits = new Set<string>();
-  const uniqueCircuitRows = circuitRows.filter(({circuit}) => { if (seenCircuits.has(circuit.id)) return false; seenCircuits.add(circuit.id); return true; });
-  const tableY = footerY + 76 + (noticeLines.length ? noticeLines.length * 18 + 28 : 0);
-  const tableRowHeight = 25;
-  const height = Math.ceil(tableY + 38 + uniqueCircuitRows.length * tableRowHeight + 105);
-  const cards = ordered.map(node => {
-    const x = node.x; const y = node.y; const device = node.device;
-    const isMissing = node.missingId !== undefined;
-    const label = node.label || (node.supply ? board.supplyLabel || t('Elosztó betáplálása') : device?.name || t('Hiányzó készülék'));
-    const title = [device?.code || node.missingId, label, node.detail, device?.rating, device?.product?.reference || device?.model, ...node.circuits.map(circuit => `${circuit.code} · ${circuit.name} · ${circuit.cable || ''}${circuit.powerW !== undefined ? ` · ${circuit.powerW} W` : ''}`)].filter(Boolean).join('\n');
-    const dataAttribute = device ? ` data-device-id="${xml(device.id)}" tabindex="0" role="button" aria-label="${xml(`${device.code} · ${device.name}`)}"`
-      : node.circuitNode ? ` data-circuit-id="${xml(node.circuits[0]?.id)}"` : '';
-    // A monochrome engineering drawing: symbols are in the feed axis and the
-    // adjacent labels identify the real shared devices and circuits.
-    let content = `<g${dataAttribute}><title>${xml(title)}</title><rect x="${x}" y="${y}" width="${cardWidth}" height="${node.height}" fill="#fff" fill-opacity="0" stroke="transparent"/>`;
-    // A circuit is a collection of separate conductors, not one common node.
-    if (!node.circuitNode) content += `<path d="M${x + cardWidth / 2} ${y}V${y + 17} M${x + cardWidth / 2} ${y + 53}V${y + node.height}" stroke="#171717" stroke-width="1.4"/><g transform="translate(${x + cardWidth / 2} ${y + 17})">${symbol(device, node.supply)}</g>`;
-    for (const port of ports.get(node.key) ?? []) {
-      const px = portX(node,port.key), py = node.circuitNode ? y : y + node.height;
-      content += `<g ${node.circuitNode ? `data-circuit-port="${xml(port.label)}" data-board-id="${xml(port.boardId)}"` : `data-terminal-port="${xml(port.key)}"`}><circle cx="${px}" cy="${py}" r="4" fill="#fff" stroke="${safeColor(port.color)}" stroke-width="2"/>${text(px,py + (node.circuitNode ? 14 : -8),port.label,9,'#222',600,'text-anchor="middle"')}</g>`;
-    }
-    content += wrapped(x + 151, y + 29, node.circuitNode ? t('Áramkör') : node.bus ? t('Sín') : node.supply ? t('Betáplálás') : device?.code || (node.label ? t('Külső bekötés') : t('Hiányzó készülék')), 16, 1, 13, isMissing?'#a64c30':'#111111', 700);
-    if (!node.circuitNode) content += wrapped(x + 151, y + 47, label, 16, 2, 11, '#222222', 500);
-    if (node.detail) content += wrapped(x+151,y+84,node.detail,16,4,10,'#333333');
-    else if (node.supply) content += wrapped(x + 151, y + 84, t('A nyilak a korábbi, irányított kapcsolatokra vonatkoznak.'), 16, 3, 10, '#444444');
-    else if (device) {
-      content += wrapped(x + 151, y + 85, device.rating || kindLabel(device.kind), 16, 2, 11, '#333333');
-      content += wrapped(x + 151, y + 117, device.product?.reference || device.model || '—', 16, 2, 10, '#333333', 500);
-      if (!node.incoming) content += `<g><title>${xml(t('Nincs megadva a bemenet'))}</title>${wrapped(x + 151, y + 144, t('Nincs megadva a bemenet'), 17, 2, 9, '#a34c30')}</g>`;
-      else if(combined) content += wrapped(x+151,y+151,data.boards.find(item=>item.id===device.boardId||item.rows.some(row=>row.placements.some(p=>p.deviceId===device.id)))?.name??'',16,1,10,'#333333');
-    } else if (!node.circuitNode) content += wrapped(x + 151, y + 100, t('A kapcsolat végpontja nem található a projektben.'), 16, 3, 10, '#a34c30');
-    node.circuits.forEach((circuit, index) => {
-      const cy = y + (node.circuitNode ? 44 : 166) + index * 70;
-      const metadata = [circuitCableLabel(circuit), circuit.powerW !== undefined ? `${circuit.powerW.toLocaleString(getLocale())} W` : '',circuit.phase].filter(Boolean).join(' · ');
-      content += `<g><title>${xml(`${t('Áramkör-hozzárendelés')}: ${circuit.code} · ${circuit.name}\n${metadata}`)}</title>`;
-      content += wrapped(x + 151, cy + 16, `${circuit.code} · ${circuit.name}`, 16, 2, 11, '#161616', 600);
-      content += wrapped(x + 151, cy + 49, metadata || '—', 16, 2, 10, '#333333');
-      content += '</g>';
-    });
-    content += '</g>';
-    return content;
-  }).join('');
-  const empty = ordered.length ? '' : `${text(MARGIN, HEADER_HEIGHT + 55, t('Nincs készülék az elosztóban'), 19, '#476657', 600)}${wrapped(MARGIN, HEADER_HEIGHT + 88, t('Helyezz el készülékeket az elosztón, majd add meg a kapcsolataikat.'), 70, 2, 13, '#6c8376')}`;
-  let notices = '';
-  if (noticeLines.length) {
-    notices += text(MARGIN, footerY + 77, t('Kapcsolati jelzések'), 12, '#96692c', 600);
-    notices += noticeLines.map((line, index) => text(MARGIN, footerY + 99 + index * 18, line, 11, '#96692c')).join('');
-  }
-  const tableWidth = width - MARGIN * 2, column = tableWidth / 4;
-  const tableHead = [t('Áramkör'), t('Fázisbekötés'), t('Kábel / vezeték'), t('Rögzített teljesítmény (W)')];
-  const grid = `<rect x="${MARGIN}" y="${tableY}" width="${tableWidth}" height="${tableRowHeight * (uniqueCircuitRows.length + 1)}" fill="none" stroke="#171717"/>` +
-    [1,2,3].map(i=>`<path d="M${MARGIN + i * column} ${tableY}V${tableY + tableRowHeight * (uniqueCircuitRows.length + 1)}" stroke="#777"/>`).join('') +
-    tableHead.map((value,i)=>wrapped(MARGIN + i * column + 6,tableY + 17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#111',700)).join('') +
-    uniqueCircuitRows.map(({circuit},index)=>{
-      const y=tableY + tableRowHeight * (index + 1);
-      const values=[`${circuit.code} · ${circuit.name}`,circuitPhaseConnectionLabel(data,circuit,combined ? undefined : board.id),circuitCableLabel(circuit) || '—',circuit.powerW===undefined?'—':`${circuit.powerW.toLocaleString(getLocale())} W`];
-      return `<path d="M${MARGIN} ${y}H${MARGIN + tableWidth}" stroke="#777"/>` + values.map((value,i)=>wrapped(MARGIN + i*column + 6,y+17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#222')).join('');
-    }).join('');
-  const legacyKey = edges.some(edge=>edge.unspecified) ? `<path d="M${MARGIN} 119h32" stroke="#161616" stroke-width="1.8" stroke-dasharray="6 4"/>${text(MARGIN+40,123,t('Szaggatott vonal: korábbi, részletezetlen kapcsolat.'),10,'#333333')}` : '';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="single-line-title single-line-description"><title id="single-line-title">${xml(`${board.name} · ${t('Egyvonalas rajz')}`)}</title><desc id="single-line-description">${xml(t('Az elosztóban megadott vezetékek és korábbi, részletezetlen kapcsolatok.'))}</desc><defs><marker id="single-line-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#161616"/></marker></defs><rect width="${width}" height="${height}" fill="#fff"/><rect x="12" y="12" width="${width-24}" height="${height-24}" fill="none" stroke="#222" stroke-width="1.2"/><g font-family="Arial, Helvetica, sans-serif">${text(MARGIN, 46, t('Egyvonalas rajz'), 22, '#111111', 700)}${wrapped(MARGIN, 72, board.name, Math.floor((width - MARGIN * 2) / 12), 1, 14, '#222222', 600)}${text(MARGIN, 96, t('{devices} készülék · {connections} kapcsolat', { devices: ordered.filter(node => node.device).length, connections: edges.length }), 11, '#444444')}${legacyKey}${paths}${cards}${empty}${text(MARGIN, footerY + 15, t('A sín sorrendje nem határozza meg a villamos kapcsolatokat.'), 11, '#333333')}${text(MARGIN, footerY + 35, t('A rajz a megadott kapcsolatokat mutatja; a jelölések sematikusak.'), 11, '#333333')}${notices}${grid}<rect x="${MARGIN}" y="${height-82}" width="${tableWidth}" height="46" fill="none" stroke="#171717"/>${wrapped(MARGIN+9,height-63,data.name,Math.floor((tableWidth-18)/7),1,12,'#111',700)}${wrapped(MARGIN+9,height-45,board.name,Math.floor((tableWidth-18)/7),1,10,'#333')}${text(width-MARGIN-8,height-45,t('Egyvonalas rajz'),10,'#333',600,'text-anchor="end"')}</g></svg>`;
-  // Treat table cells and the two title-block fields as individual pagination
-  // regions. A very wide sheet can still split between columns, while normal
-  // rows and the title block stay together on PDF pages.
-  const tableBlocks = Array.from({length:uniqueCircuitRows.length + 1},(_,row) =>
-    Array.from({length:4},(_,col) => ({x:MARGIN + col * column, y:tableY + row * tableRowHeight, width:column, height:tableRowHeight}))).flat();
-  const titleBlocks = [0,1].map(col=>({x:MARGIN + col * tableWidth / 2, y:height - 82, width:tableWidth / 2, height:46}));
-  return { svg, width, height, blocks: [...ordered.map(node => ({ x: node.x, y: node.y, width: cardWidth, height: node.height })), ...tableBlocks, ...titleBlocks] };
+  if(topology.issues.length){y+=25;content+=text(MARGIN,y,t('Kapcsolati jelzések'),14,700,'start','#a12d24');y+=16;for(const issue of topology.issues){const ls=lines(issue.message,Math.floor(tableWidth/6));content+=wrapped(MARGIN,y,issue.message,Math.floor(tableWidth/6),10,400,'start','#a12d24');y+=ls.length*14+5;}}
+  y+=25;const footerY=y;content+=`<rect x="${MARGIN}" y="${y}" width="${tableWidth}" height="52" fill="none" stroke="#222"/>`;
+  content+=text(MARGIN+8,y+20,data.name,12,700)+text(MARGIN+8,y+39,board.name,10)+text(width-MARGIN-8,y+39,t('Egyvonalas rajz'),10,600,'end');
+  blocks.push({x:MARGIN,y:footerY,width:tableWidth/2,height:52},{x:MARGIN+tableWidth/2,y:footerY,width:tableWidth/2,height:52});
+  y+=82;
+  const height=Math.ceil(y);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(width)}" height="${height}" viewBox="0 0 ${Math.ceil(width)} ${height}" role="img" aria-labelledby="single-line-title single-line-description"><title id="single-line-title">${xml(`${board.name} · ${t('Egyvonalas rajz')}`)}</title><desc id="single-line-description">${xml(t('Az elosztóban megadott vezetékek és korábbi, részletezetlen kapcsolatok.'))}</desc><rect width="${Math.ceil(width)}" height="${height}" fill="#fff"/><rect x="12" y="12" width="${Math.ceil(width)-24}" height="${height-24}" fill="none" stroke="#222" stroke-width="1.2"/><g font-family="Arial, Helvetica, sans-serif">${text(MARGIN,46,t('Egyvonalas kapcsolási rajz'),21,700)}${text(MARGIN,70,board.name,13,600)}${text(MARGIN,92,t('A rajz a megadott kapcsolatokat mutatja; a kapcsolók állapota nem ismert.'),10)}${content}</g></svg>`;
+  return {svg,width:Math.ceil(width),height,blocks,netSegments};
 }
 
-/** Shared-project overview preserves cross-board wiring without duplicating edges. */
 export function buildProjectSingleLineSvg(data:ProjectData):SingleLineDrawing {
-  const board:Board={id:'combined-project-view',name:data.name,rows:data.boards.flatMap(item=>item.rows),connections:data.boards.flatMap(item=>item.connections??[]),
-    wiring:{buses:data.boards.flatMap(item=>item.wiring?.buses??[]),infeeds:data.boards.flatMap(item=>item.wiring?.infeeds??[]),wires:data.boards.flatMap(item=>item.wiring?.wires??[])}};
+  const board:Board={id:'combined-project-view',name:data.name,rows:[],connections:[],wiring:{buses:[],infeeds:[],wires:[]}};
   return buildSingleLineSvg(data,board,true);
 }

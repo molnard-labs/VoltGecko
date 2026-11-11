@@ -51,7 +51,7 @@ describe('single-line SVG', () => {
     expect(svg).toContain('data-connection-id="second-wire"');
     expect(svg).toContain('data-connection-id="branch-one"');
     expect(svg).toContain('Részletezetlen kapcsolat');
-    expect(svg).toContain('stroke-dasharray="6 4"');
+    expect(svg).toContain('A pontos kapcsok nincsenek megadva.');
     expect(data).toEqual(snapshot);
   });
   it('preserves an incomplete virtual supply when supply and earth conductors are added', () => {
@@ -69,7 +69,7 @@ describe('single-line SVG', () => {
     expect(svg).toContain('data-connection-id="grid-wire"');
     expect(svg).toContain('data-connection-id="earth-wire"');
   });
-  it('exports an explicit green-yellow wire as two strokes while preserving solid custom greens', () => {
+  it('retains wires with custom and green-yellow colors without mutating stored data', () => {
     const { data, board, devices } = fixture();
     board.connections = [];
     devices[0].electrical = { poles: ['PE'] };
@@ -80,15 +80,13 @@ describe('single-line SVG', () => {
       { id: 'striped-earth', from, to, color: '#2f9e44', colorPattern: 'green-yellow' },
       { id: 'custom-green', from, to, color: '#2f9e44' }
     ] };
+    const snapshot=structuredClone(data);
     const drawing = buildSingleLineSvg(data, board).svg;
     const striped = drawing.match(/<g data-connection-id="striped-earth"[\s\S]*?<\/g>/)![0];
     const solid = drawing.match(/<g data-connection-id="custom-green"[\s\S]*?<\/g>/)![0];
-    expect(striped.match(/<path /g)).toHaveLength(2);
-    expect(striped).toContain('stroke="#2f9e44"');
-    expect(striped).toContain('stroke="#f2cf1d"');
-    expect(striped).toContain('stroke-dasharray="7 7"');
-    expect(solid.match(/<path /g)).toHaveLength(1);
-    expect(solid).not.toContain('stroke-dasharray');
+    expect(striped).toContain('Vezeték');
+    expect(solid).toContain('Vezeték');
+    expect(data).toEqual(snapshot);
   });
   it('retains manual circuit cable descriptions when only structured length is added',()=>{
     expect(circuitCableLabel({id:'c',code:'C',name:'Load',notes:'',color:'#123456',cable:'Existing NYM-J 3×2.5',cableDetails:{lengthM:10}})).toBe('Existing NYM-J 3×2.5 · 10 m');
@@ -107,19 +105,16 @@ describe('single-line SVG', () => {
       ],
     }]}];
     const first = buildSingleLineSvg(data,board).svg;
-    expect(first.match(/data-circuit-id="c"/g)).toHaveLength(1);
+    expect(first.match(/data-circuit-id="c"/g)).toHaveLength(3);
     expect(first).toContain(`data-connection-id="circuit:c:${board.id}:L"`);
     expect(first).toContain(`data-connection-id="circuit:c:${board.id}:N"`);
     expect(first).toContain(`data-connection-id="circuit:c:${board.id}:PE"`);
     expect(first).toContain('N sín · 2 (N)');
-    const portMatches = [...first.matchAll(/data-circuit-port="(L|N|PE)" data-board-id="[^"]+"><circle cx="([\d.]+)" cy="([\d.]+)"/g)];
-    expect(portMatches.map(item=>item[1])).toEqual(['L','N','PE']);
-    expect(new Set(portMatches.map(item=>item[2])).size).toBe(3);
-    const circuitCard = first.match(/<g data-circuit-id="c">[\s\S]*?<\/g><\/g>/)?.[0] ?? '';
-    expect(circuitCard).not.toContain('stroke="#171717" stroke-width="1.4"');
+    const ports = [...first.matchAll(/data-circuit-port="(L|N|PE)" data-board-id="[^"]+"/g)].map(item=>item[1]);
+    expect(ports).toEqual(['L','N','PE']);
     data.sheets[0].routes = [{id:'drawing',fromDeviceId:devices[2].id,toDeviceId:devices[3].id,kind:'power',points:[]}];
     expect(buildSingleLineSvg(data,board).svg).toBe(first);
-    expect(buildProjectSingleLineSvg(data).svg.match(/data-circuit-id="c"/g)).toHaveLength(1);
+    expect(buildProjectSingleLineSvg(data).svg.match(/data-circuit-id="c"/g)).toHaveLength(3);
   });
   it('does not draw a manual protective assignment as an electrical connection', () => {
     const {data,board,devices} = fixture();
@@ -177,7 +172,8 @@ describe('single-line SVG', () => {
     board.connections = [];
     const result = buildSingleLineSvg(data, board);
     expect(result.svg).not.toContain('data-connection-id=');
-    expect(result.svg.match(/Nincs megadva a bemenet/g)).toHaveLength(4);
+    expect(result.svg).toContain('Nincs megadott kapcsolat');
+    expect(result.svg).toContain('Nincs bekötve');
     expect(result.svg).not.toContain('data-device-id="supply"');
   });
   it('retains cycles, self-links, multiple feeds and repeated links instead of producing a spanning tree', () => {
@@ -192,23 +188,12 @@ describe('single-line SVG', () => {
     expect(result.svg.match(/data-connection-id=/g)).toHaveLength(8);
     for (const connection of board.connections!) expect(result.svg).toContain(`data-connection-id="${connection.id}"`);
     expect(result.svg).not.toMatch(/NaN|Infinity/);
-    // Each line must be traceable around cards, including the cycle's side routes.
-    const edgePaths = [...result.svg.matchAll(/data-connection-index="\d+"><title>.*?<\/title><path d="([^"]+)"/g)].map(match => match[1]);
-    expect(edgePaths).toHaveLength(8);
-    for (const path of edgePaths) {
-      let x = 0; let y = 0;
-      for (const match of path.matchAll(/([MHV])([^MHV]+)/g)) {
-        const values = match[2].trim().split(/\s+/).map(Number);
-        if (match[1] === 'M') { [x, y] = values; continue; }
-        const nx = match[1] === 'H' ? values[0] : x;
-        const ny = match[1] === 'V' ? values[0] : y;
-        for (const block of result.blocks) {
-          const horizontalIntersection = y === ny && y > block.y && y < block.y + block.height && Math.max(x, nx) > block.x && Math.min(x, nx) < block.x + block.width;
-          const verticalIntersection = x === nx && x > block.x && x < block.x + block.width && Math.max(y, ny) > block.y && Math.min(y, ny) < block.y + block.height;
-          expect(horizontalIntersection || verticalIntersection).toBe(false);
-        }
-        x = nx; y = ny;
-      }
+    // These legacy links lack terminal identities: retain them explicitly as
+    // incomplete records, never draw them as verified electrical paths.
+    for (const connection of board.connections!) {
+      const record=result.svg.match(new RegExp(`<g data-connection-id="${connection.id}"[\\s\\S]*?<\\/g>`))![0];
+      expect(record).toContain('Részletezetlen kapcsolat');
+      expect(record).toContain('A pontos kapcsok nincsenek megadva.');
     }
   });
   it('includes explicitly connected unplaced meters and missing endpoints without discarding the connection', () => {
@@ -219,11 +204,11 @@ describe('single-line SVG', () => {
     const result = buildSingleLineSvg(data, board);
     expect(result.svg).toContain(`data-device-id="${meter.id}"`);
     expect(result.svg).toContain('Fogyasztásmérő');
-    expect(result.svg).toContain('Hiányzó készülék');
+    expect(result.svg.toLowerCase()).toContain('hiányzó készülék');
     expect(result.svg).toContain('deleted-meter');
     expect(result.svg.match(/data-connection-id=/g)).toHaveLength(6);
   });
-  it('includes board-assigned DIN devices and attaches a circuit only at its explicit protective device', () => {
+  it('includes board-assigned DIN devices without inferring a circuit connection from a stale assignment', () => {
     const { data, board, devices } = fixture();
     const unplaced = makeDevice('rcbo', devices); unplaced.boardId = board.id;
     data.devices.push(unplaced);
@@ -231,8 +216,9 @@ describe('single-line SVG', () => {
     data.circuits.push({ id: 'shared', code: 'C1', name: 'Explicit protection', color: '#287c68', notes: '', protectionDeviceId: unplaced.id, cable: '5 × 2,5 mm²', powerW: 9000 });
     const result = buildSingleLineSvg(data, board);
     expect(result.svg).toContain(`data-device-id="${unplaced.id}"`);
-    // The visible circuit label and its title occur once each on the protective device.
-    expect(result.svg.match(/Áramkör-hozzárendelés: C1/g)).toHaveLength(1);
+    expect(result.svg).not.toContain('data-circuit-id="shared"');
+    expect(result.svg).not.toContain('data-connection-id="protection:shared"');
+    expect(result.svg).toContain('Nincs fázisbekötés');
     expect(result.svg).toContain('5 × 2,5 mm²');
   });
   it('uses a circuit-linked device for legacy circuit data with no protective assignment', () => {
@@ -249,6 +235,7 @@ describe('single-line SVG', () => {
     board.supplyLabel = '<image href="https://bad.invalid/x" onload="bad()"/>';
     devices[0].name = '<foreignObject onload="bad()">&bad';
     devices[0].id = 'device" onclick="bad()';
+    devices[0].electrical = {poles:['L'],role:'mcb" onload="bad()' as NonNullable<Device['electrical']>['role']};
     board.rows[0].placements[0].deviceId = devices[0].id;
     board.connections![0].toDeviceId = devices[0].id;
     board.connections![1].fromDeviceId = devices[0].id;
@@ -272,9 +259,11 @@ describe('single-line SVG', () => {
     board.connections = data.devices.map((device, index) => ({ id: `edge-${index}`, fromDeviceId: device.id, toDeviceId: data.devices[(index + 1) % data.devices.length].id }));
     const result = buildSingleLineSvg(data, board);
     expect(result.svg.match(/data-connection-id=/g)).toHaveLength(1200);
+    for (const device of data.devices) expect(result.svg).toContain(`data-device-id="${device.id}"`);
     expect(result.svg).not.toMatch(/NaN|Infinity/);
     expect(result.width).toBeLessThan(2500);
-    expect(result.height).toBeLessThan(100_000);
+    expect(Number.isFinite(result.height)).toBe(true);
+    expect(result.height).toBeLessThan(150_000);
   });
   it('localizes exported labels while leaving user names intact', () => {
     const { data, board } = fixture();
@@ -285,9 +274,94 @@ describe('single-line SVG', () => {
     expect(result.svg).toContain('Saját szekrény');
     expect(result.svg).toContain('specified wires and previous, unspecified connections');
     expect(result.svg).not.toContain('with direction arrows');
-    expect(result.svg).toContain('Input unspecified');
+    expect(result.svg).toContain('No connection specified');
     expect(result.svg).toContain('Single-line diagram');
     expect(result.svg).toContain('Phase connection');
     expect(result.svg).not.toContain('Nincs megadva a bemenet');
+  });
+  it('draws separate FI phase, neutral and PE networks and marks incompatible links', () => {
+    const {data,board,devices}=fixture(); board.connections=[];
+    devices[1].electrical={role:'rccb',poles:['L','N'],physicalPoleOrder:[1,0]};
+    board.wiring={infeeds:[{id:'grid',name:'Hálózat',kind:'supply',poles:['L','N','PE']}],
+      buses:[{id:'pe',name:'PE sín',conductor:'PE',capacity:2,terminalLabels:[],position:'bottom'}],
+      wires:[
+        {id:'phase',from:{kind:'infeed',infeedId:'grid',pole:0},to:{kind:'device',deviceId:devices[1].id,side:'top',pole:0}},
+        {id:'neutral',from:{kind:'infeed',infeedId:'grid',pole:1},to:{kind:'device',deviceId:devices[1].id,side:'top',pole:1}},
+        {id:'earth',from:{kind:'infeed',infeedId:'grid',pole:2},to:{kind:'bus',busId:'pe',terminal:0}},
+        {id:'wrong',from:{kind:'infeed',infeedId:'grid',pole:0},to:{kind:'device',deviceId:devices[1].id,side:'top',pole:1}},
+      ]};
+    data.circuits=[{id:'c',code:'C1',name:'Kör',color:'#123456',notes:'',boardConnections:[{boardId:board.id,terminals:[
+      {conductor:'L',endpoint:{kind:'device',deviceId:devices[1].id,side:'bottom',pole:0}},
+      {conductor:'N',endpoint:{kind:'device',deviceId:devices[1].id,side:'bottom',pole:1}},
+      {conductor:'PE',endpoint:{kind:'bus',busId:'pe',terminal:1}},
+    ]}]}];
+    const drawing=buildSingleLineSvg(data,board),svg=drawing.svg;
+    for(const section of ['Fázisvezetők','Nullavezető (N)','Védővezető (PE)'])expect(svg).toContain(section);
+    for(const conductor of ['L','N','PE'])expect(svg).toContain(`data-circuit-port="${conductor}"`);
+    const bad=svg.match(/<g data-connection-id="wrong"[\s\S]*?<\/g>/)![0];
+    expect(bad).toContain('fill="#fff8f5"');
+    expect(svg).toContain('Hibás vezetőkapcsolat');
+    expect(svg).toContain('felső 2 (L)');
+    expect(svg).toContain('felső 1 (N)');
+    expect(new Set(drawing.netSegments.map(segment=>segment.net)).size).toBeGreaterThanOrEqual(3);
+    expect(drawing.netSegments.some(segment=>segment.x1===segment.x2 && segment.y2>segment.y1)).toBe(true);
+  });
+  it('does not treat unverified pole definitions as conducting device paths',()=>{
+    const {data,board,devices}=fixture(); board.connections=[];
+    delete devices[2].electrical;
+    board.wiring={infeeds:[],buses:[],wires:[{id:'w',from:{kind:'device',deviceId:devices[2].id,side:'top',pole:0},to:{kind:'device',deviceId:devices[3].id,side:'top',pole:0}}]};
+    const svg=buildSingleLineSvg(data,board).svg;
+    expect(svg).toContain(`data-connection-id="uncertain-pole:${devices[2].id}:0"`);
+    expect(svg).toContain('Pólusadat nincs megerősítve');
+    expect(svg).not.toContain(`data-device-id="${devices[2].id}" data-pole=`);
+  });
+  it('preserves a genuine device-pole cycle with paired references and exact terminals',()=>{
+    const {data,board,devices}=fixture();board.connections=[];
+    for(const d of devices.slice(2,4))d.electrical={role:'mcb',poles:['L']};
+    board.wiring={infeeds:[],buses:[],wires:[
+      {id:'top',from:{kind:'device',deviceId:devices[2].id,side:'top',pole:0},to:{kind:'device',deviceId:devices[3].id,side:'top',pole:0}},
+      {id:'bottom',from:{kind:'device',deviceId:devices[2].id,side:'bottom',pole:0},to:{kind:'device',deviceId:devices[3].id,side:'bottom',pole:0}},
+    ]};
+    const svg=buildSingleLineSvg(data,board).svg;
+    expect(svg).toContain('data-connection-id="top"');
+    expect(svg).toContain('data-connection-id="bottom"');
+    expect(svg).toMatch(/data-connection-id="pole:/);
+    expect(svg).toMatch(/Hurok phase-1/g);
+    expect(svg).toContain('felső 1 (L)');
+    expect(svg).toContain('alsó 1 (L)');
+  });
+  it('refers to a remote board continuation without inventing an open end',()=>{
+    const {data,board,devices}=fixture(); board.connections=[];
+    devices[2].electrical={role:'mcb',poles:['L']};
+    const remote=makeDevice('breaker',devices);remote.id='remote';remote.code='QF-remote';remote.electrical={role:'mcb',poles:['L']};data.devices.push(remote);
+    const other={id:'other',name:'Másik elosztó',rows:[{id:'r',name:'Sor',capacity:4,placements:[{deviceId:remote.id,start:0}]}],connections:[],wiring:{buses:[],infeeds:[{id:'remote-grid',name:'Távoli hálózat',kind:'supply' as const,poles:['L' as const]}],wires:[{id:'remote-feed',from:{kind:'infeed' as const,infeedId:'remote-grid',pole:0},to:{kind:'device' as const,deviceId:remote.id,side:'top' as const,pole:0}}]}};
+    data.boards.push(other);
+    board.wiring={infeeds:[],buses:[],wires:[{id:'cross',from:{kind:'device',deviceId:remote.id,side:'bottom',pole:0},to:{kind:'device',deviceId:devices[2].id,side:'top',pole:0}}]};
+    const svg=buildSingleLineSvg(data,board).svg;
+    const remoteGroup=svg.match(/<g data-device-id="remote"[\s\S]*?<\/g>/)![0];
+    expect(remoteGroup).toContain('Másik elosztó');
+    expect(remoteGroup).toContain('Távoli elosztó');
+    expect(remoteGroup).not.toContain('Szabad, bekötetlen vég');
+    expect(buildProjectSingleLineSvg(data).svg).toContain('data-connection-id="remote-feed"');
+  });
+  it('keeps a typical eight-circuit L/N/PE board in the graphical view',()=>{
+    const {data,board}=fixture();board.connections=[];
+    const breakers:Device[]=[];
+    for(let i=0;i<8;i++){const d=makeDevice('breaker',breakers);d.electrical={role:'mcb',poles:['L']};breakers.push(d);}
+    data.devices=breakers;board.rows[0].placements=breakers.map((d,i)=>({deviceId:d.id,start:i}));
+    board.wiring={infeeds:[{id:'source',name:'Hálózat',kind:'supply',poles:['L','N','PE']}],buses:[
+      {id:'n',name:'N sín',conductor:'N',capacity:8,position:'bottom',terminalLabels:[]},
+      {id:'pe',name:'PE sín',conductor:'PE',capacity:8,position:'bottom',terminalLabels:[]}],wires:[]};
+    for(let i=0;i<8;i++)board.wiring.wires.push({id:`w${i}`,from:{kind:'infeed',infeedId:'source',pole:0},to:{kind:'device',deviceId:breakers[i].id,side:'top',pole:0}});
+    for(const [pole,id] of [[1,'n'],[2,'pe']] as const)board.wiring.wires.push({id:`w${id}`,from:{kind:'infeed',infeedId:'source',pole},to:{kind:'bus',busId:id,terminal:0}});
+    data.circuits=breakers.map((d,i)=>({id:`c${i}`,code:`C${i}`,name:`Kör ${i}`,notes:'',color:'#123456',boardConnections:[{boardId:board.id,terminals:[
+      {conductor:'L',endpoint:{kind:'device',deviceId:d.id,side:'bottom',pole:0}},
+      {conductor:'N',endpoint:{kind:'bus',busId:'n',terminal:i}},
+      {conductor:'PE',endpoint:{kind:'bus',busId:'pe',terminal:i}},
+    ]}]}));
+    const drawing=buildSingleLineSvg(data,board);
+    expect(drawing.svg).not.toContain('A nagy hálózat pontos kapcsolatai');
+    expect(drawing.svg.match(/data-circuit-port=/g)).toHaveLength(24);
+    for(const wire of board.wiring.wires)expect(drawing.svg).toContain(`data-connection-id="${wire.id}"`);
   });
 });

@@ -11,7 +11,7 @@ import { downloadBlob, safeFilename } from './files';
 import { buildSingleLineSvg, cableLabel, circuitCableLabel } from './singleLine';
 import { getBoardConnectionIssues } from '../data/boardConnections';
 import { getWiringIssues, wiringEndpointLabel, getPhaseLoads } from '../data/boardWiring';
-import { diagramTiles } from './diagramPages';
+import { diagramContinuations, diagramTiles, hasBoardDiagramContent } from './diagramPages';
 import { getFloorPlanDisplay, getPlanAppearance } from '../data/planAppearance';
 import { floorRouteEndpoint, floorRoutePoints } from '../data/floorRoute';
 import { floorRouteCircuitId } from '../data/floorRouteCircuit';
@@ -422,7 +422,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     if (circuitConnections.length) table(t('{board} · áramköri csatlakozások', { board: board.name }),
       ['Áramkör', 'Vezető', 'Kapocs'], [140, 50, 194], circuitConnections);
     if (issues.length) table(t('{board} · ellenőrzendő jelzések', { board: board.name }), ['Sor', 'Jelzés'], [55, WIDTH - 55], issues.map(issue => [board.rows.find(row => row.id === issue.rowId)?.name || '', issue.message]));
-    if (board.connections?.length || board.wiring?.wires.length || boardCircuits.some(item => item.connection.terminals.length)) {
+    if (hasBoardDiagramContent(board,boardData.devices,boardCircuits.map(item=>item.connection))) {
       const drawing=buildSingleLineSvg(boardData,board);
       // Keep schematic text readable on A3, tiling large diagrams instead of shrinking them.
       const mmPerUnit=.26, tileWidth=WIDTH/mmPerUnit, tileHeight=210/mmPerUnit;
@@ -438,6 +438,18 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
         context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
         page(t('{board} · egyvonalas rajz',{board:board.name}),tiles.length>1?t('Rajzrészlet: {column}/{columns}. oszlop · {row}/{rows}. sor',{column,columns,row,rows}):'');
         pdf.addImage(canvas,'PNG',MARGIN,60,w*mmPerUnit,h*mmPerUnit,undefined,'FAST');canvas.width=0;canvas.height=0;
+        // A cut line must carry the exact net identifier and the adjacent
+        // tile's column/row. Both ends receive a matching reference.
+        for(const mark of diagramContinuations(tile,drawing.netSegments)){
+          const label=`${mark.net} (${mark.column}/${mark.row})`;
+          pdf.setFont('NotoSans');pdf.setFontSize(5.5);pdf.setTextColor('#161616');
+          const labelWidth=pdf.getTextWidth(label)+1.4;
+          const px=MARGIN+(mark.x-atX)*mmPerUnit,py=60+(mark.y-atY)*mmPerUnit;
+          const lx=Math.max(MARGIN,Math.min(MARGIN+w*mmPerUnit-labelWidth,px-(mark.side==='right'?labelWidth:0)));
+          const ly=Math.max(60,Math.min(60+h*mmPerUnit-3,py-(mark.side==='bottom'?3:0)));
+          pdf.setFillColor('#ffffff');pdf.setDrawColor('#161616');pdf.setLineWidth(0.15);pdf.rect(lx,ly,labelWidth,3,'FD');
+          pdf.text(label,lx+0.7,ly+2.15);
+        }
       }
       if(board.connections?.length) table(t('{board} · elosztókapcsolatok',{board:board.name}),['Kiinduló eszköz','Cél eszköz'],[WIDTH/2,WIDTH/2],board.connections.map(connection=>[
         connection.fromDeviceId?`${deviceMap.get(connection.fromDeviceId)?.code??'?'} · ${deviceMap.get(connection.fromDeviceId)?.name??'?'}`:board.supplyLabel||t('Külső betáplálás'),

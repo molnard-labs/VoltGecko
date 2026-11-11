@@ -13,7 +13,8 @@
 .single-line-svg{transform-origin:top left;position:absolute;top:0;left:0;user-select:none;-webkit-user-select:none}
 .single-line-svg>svg{display:block;max-width:none}
 .single-line-svg [data-device-id]{cursor:pointer;outline:none}
-.single-line-svg [data-device-id]:hover>rect:first-of-type,.single-line-svg [data-device-id]:focus-visible>rect:first-of-type{stroke:#2c8061;stroke-width:3;fill:#f8fbf5}
+.single-line-svg [data-device-id]:hover>rect:first-of-type{stroke:#2c8061;stroke-width:3;fill:#f8fbf5}
+.single-line-svg [data-device-id]:focus-visible{outline:3px solid #2c8061;outline-offset:3px}
 .single-line-caption{display:flex;align-items:center;gap:8px;font-size:0.875rem;color:var(--text-secondary);line-height:1.6}
 .single-line-issues{padding:15px 18px;background:var(--warning-bg);border:1px solid var(--line);border-radius:7px;color:var(--warning);font-size:0.875rem;line-height:1.7}
 .single-line-issues h3{display:flex;align-items:center;gap:8px;margin:0 0 9px;font-size:0.875rem;font-weight:600}
