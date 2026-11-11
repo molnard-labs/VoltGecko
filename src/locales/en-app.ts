@@ -107,6 +107,7 @@ const messages:Record<string,string> = {
   'Megosztott fájl kiválasztása':'Choose shared file',
   'Megrendelő':'Client',
   'Mentett változat':'Saved version',
+  '{count} mentett változat':'Saved versions: {count}',
   'Mentett állapotok, amelyekhez később is visszatérhetsz.':'Saved versions you can return to at any time.',
   'Ments külső példányt.':'Save an external copy.',
   'Mentés és export':'Save and export',

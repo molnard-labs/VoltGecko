@@ -69,7 +69,7 @@ export function EditorSidebar({
     >
       <DeviceSymbol kind={entry.kind} variant={entry.variant} size={25} />
       <span>{entry.label}</span>
-      {entry.moduleWidth && <small>{entry.moduleWidth} M</small>}
+      {entry.moduleWidth && <small>{entry.moduleWidth.toLocaleString(getLocale(), { maximumFractionDigits: 2 })} M</small>}
     </button>
   );
   const search = query.toLocaleLowerCase(getLocale());
@@ -113,6 +113,7 @@ export function EditorSidebar({
           <small>{t('Gyártói terméktár')}</small>
         </span>
       </button>
+      <div className="sidebar-content">
       {(view === 'floor' || view === 'board') && (
         <section className="sidebar-catalog" aria-labelledby="catalog-heading">
           <div className="catalog-heading">
@@ -193,6 +194,7 @@ export function EditorSidebar({
           ))}
           {!filtered.length && <p className="subtle">{t('Nincs ilyen eszköz.')}</p>}
         </div>
+      </div>
       </div>
       <div className="sidebar-bottom">
         <label className="sidebar-language" title={t('Felület nyelve')}>

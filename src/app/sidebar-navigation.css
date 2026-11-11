@@ -60,3 +60,21 @@
   color: var(--text);
   font-size: 1rem;
 }
+
+/* Both catalogues share one scroll area.  On very short screens, scrolling
+   the whole drawer keeps every control reachable without a tiny central pane. */
+.sidebar { overflow: hidden; }
+.sidebar-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.sidebar-content .catalog-groups { max-height: none; overflow: visible; }
+.sidebar-content .device-library { flex: none; min-height: 0; overflow: visible; }
+.sidebar-content .device-list { flex: none; min-height: 0; overflow: visible; }
+@media (max-height: 800px) {
+  .sidebar { overflow-y: auto; }
+  .sidebar-content { flex: 0 0 auto; overflow: visible; }
+}

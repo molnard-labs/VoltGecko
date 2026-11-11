@@ -1,5 +1,8 @@
 import type { Asset, Board, Device, FloorPlanDisplay, PlanSheet, ProjectData } from '../types';
 import { boardImage } from '../products/boardImage';
+import { floorProductImage } from '../products/floorImage';
+import { isPlanImageAsset } from './planImageAsset';
+export { isPlanImageAsset } from './planImageAsset';
 
 export const DEFAULT_PLAN_IMAGE_SIZE = 80;
 
@@ -13,24 +16,21 @@ export function getFloorPlanDisplay(data: Pick<ProjectData, 'floorPlanDisplay'>)
   return data.floorPlanDisplay === 'images' ? 'images' : 'symbols';
 }
 
-export function isPlanImageAsset(asset: Asset | undefined): asset is Asset {
-  return asset !== undefined && ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mime);
-}
-
 function bounded(value: number | undefined, min: number, max: number, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 }
 
 /** One appearance contract shared by the editor and exported floor plans. */
 export function getPlanAppearance(
-  device: Pick<Device, 'planImage'>,
+  device: Pick<Device, 'planImage' | 'product'>,
   assets: Readonly<Record<string, Asset>>,
   display: FloorPlanDisplay,
 ): PlanAppearance {
   if (display === 'symbols') return { kind: 'symbol', size: 36, opacity: 1 };
   const image = device.planImage;
   const size = bounded(image?.size, 24, 240, DEFAULT_PLAN_IMAGE_SIZE);
-  const asset = image ? assets[image.assetId] : undefined;
+  // A deliberately selected local image always wins over the catalogue photo.
+  const asset = image ? assets[image.assetId] : floorProductImage(device)?.asset;
   if (!isPlanImageAsset(asset)) return { kind: 'missing-image', size, opacity: 1 };
   return { kind: 'image', asset, size, opacity: bounded(image?.opacity, 0.1, 1, 1) };
 }

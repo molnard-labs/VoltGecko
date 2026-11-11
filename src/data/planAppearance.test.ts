@@ -4,6 +4,8 @@ import type { Asset, Device } from '../types';
 import { decodeProject, encodeProject, validateProject } from './archive';
 import { DEFAULT_PLAN_IMAGE_SIZE, getFloorPlanDisplay, getPlanAppearance, getPlanSheetBounds } from './planAppearance';
 import { checkpoint, createProject, restoreRevision } from './project';
+import { ASFORA_PRODUCTS } from '../products/asfora';
+import { assignFloorProduct } from '../products/factory';
 
 const image: Asset = {
   id: 'chandelier', name: 'chandelier.png', mime: 'image/png',
@@ -21,6 +23,40 @@ function imageProject() {
 }
 
 describe('floor-plan appearance', () => {
+  it('resolves the selected manufacturer image in existing and archived projects without adding assets', async () => {
+    const doc = createProject();
+    const original = makeDevice('switch', [], 'switch-two-way');
+    const anthracite = ASFORA_PRODUCTS.find(product => product.reference === 'EPH0400171')!;
+    const white = ASFORA_PRODUCTS.find(product => product.reference === 'EPH0400121')!;
+    const device = assignFloorProduct(original, anthracite);
+    doc.data.devices = [device];
+    const before = structuredClone(doc);
+    const first = getPlanAppearance(device, doc.assets, 'images');
+    expect(first).toMatchObject({ kind: 'image', asset: { data: anthracite.image, mime: 'image/webp' }, size: DEFAULT_PLAN_IMAGE_SIZE, opacity: 1 });
+    expect(getPlanAppearance(device, doc.assets, 'symbols')).toEqual({ kind: 'symbol', size: 36, opacity: 1 });
+    expect(doc).toEqual(before);
+    const reopened = await decodeProject(await encodeProject(doc));
+    expect(reopened.assets).toEqual({});
+    expect(getPlanAppearance(reopened.data.devices[0], reopened.assets, 'images')).toEqual(first);
+
+    const changed = assignFloorProduct(device, white);
+    const second = getPlanAppearance(changed, doc.assets, 'images');
+    expect(second).toMatchObject({ kind: 'image', asset: { data: white.image } });
+    expect(white.image).not.toBe(anthracite.image);
+    expect(getPlanAppearance({ ...device, product: undefined }, doc.assets, 'images').kind).toBe('missing-image');
+    expect(getPlanAppearance({ ...device, product: { ...device.product!, manufacturer: 'Unrelated' } }, doc.assets, 'images').kind).toBe('missing-image');
+  });
+
+  it('prefers a user-selected image over the manufacturer photo and restores the product image when removed', () => {
+    const product = ASFORA_PRODUCTS.find(item => item.reference === 'EPH0400171')!;
+    const device = assignFloorProduct(makeDevice('switch', [], 'switch-two-way'), product);
+    device.planImage = { assetId: image.id, size: 96, opacity: .75 };
+    expect(getPlanAppearance(device, { [image.id]: image }, 'images')).toEqual({ kind: 'image', asset: image, size: 96, opacity: .75 });
+    const replacement = assignFloorProduct(device, ASFORA_PRODUCTS.find(item => item.reference === 'EPH0400121')!);
+    expect(getPlanAppearance(replacement, { [image.id]: image }, 'images')).toEqual({ kind: 'image', asset: image, size: 96, opacity: .75 });
+    delete replacement.planImage;
+    expect(getPlanAppearance(replacement, {}, 'images')).toMatchObject({ kind: 'image', asset: { data: ASFORA_PRODUCTS.find(item => item.reference === 'EPH0400121')!.image } });
+  });
   it('preserves the background opacity and styled text through archive export and import', async () => {
     const document = createProject();
     const sheet = document.data.sheets[0];

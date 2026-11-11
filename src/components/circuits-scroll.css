@@ -1,6 +1,17 @@
-/* Keep all circuits on one horizontal strip without widening the page. */
-.circuits-view { min-width: 0; }
+/* One two-dimensional viewport keeps both scrollbars next to the visible cards,
+   regardless of their height, while the workspace header remains fixed. */
+.editor-area:has(> .circuits-view) { overflow: hidden; }
+.circuits-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: 24px 0 0 24px;
+}
 .circuits-view .circuit-cards {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: none;
   grid-auto-flow: column;
@@ -8,13 +19,14 @@
   align-items: stretch;
   gap: 18px;
   max-width: 100%;
-  /* The cards take their full height; vertical scrolling belongs to the page. */
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
   overscroll-behavior-x: contain;
-  padding: 0 2px 16px;
+  padding: 0 24px 24px 2px;
   scrollbar-width: auto;
+  scrollbar-gutter: stable;
 }
+.circuits-view > .empty { flex: 0 0 auto; }
+@media (max-width: 760px) { .circuits-view { padding: 18px 0 0 14px; } }
 .circuits-view .circuit-card { min-width: 0; }
 .circuit-conductors {
   min-width: 0;

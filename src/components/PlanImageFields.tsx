@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { DEFAULT_PLAN_IMAGE_SIZE, isPlanImageAsset } from '../data/planAppearance';
+import { floorProductImage } from '../products/floorImage';
 import type { Asset, Device } from '../types';
 
 interface Props {
@@ -14,7 +15,8 @@ interface Props {
 export function PlanImageFields({ device, assets, onChange, onUpload }: Props) {
   const uploadInput = useRef<HTMLInputElement>(null);
   const image = device.planImage;
-  const asset = image ? assets[image.assetId] : undefined;
+  const catalogue = image ? undefined : floorProductImage(device);
+  const asset = image ? assets[image.assetId] : catalogue?.asset;
   const [failedPreview, setFailedPreview] = useState<string>();
   const photos = device.photoIds.map(id => assets[id]).filter(isPlanImageAsset);
   const selectPhoto = (assetId: string) => onChange({
@@ -30,6 +32,7 @@ export function PlanImageFields({ device, assets, onChange, onUpload }: Props) {
       <img src={asset.data} onError={() => setFailedPreview(asset.data)} alt={t('Az eszköz alaprajzi képe: {name}', { name: asset.name })}/>
       <span>{asset.name}</span>
     </div>}
+    {catalogue && <p className="subtle">{t('A hozzárendelt gyártói termék képe automatikusan jelenik meg; saját kép feltöltésével lecserélheted.')}{catalogue.illustrative && <> {t('Termékcsalád illusztrációja')}.</>}</p>}
     {image && (!isPlanImageAsset(asset) || failedPreview === asset.data) && <p className="input-warning">{t('Az alaprajzi kép hiányzik vagy nem olvasható. Tölts fel vagy válassz másik képet.')}</p>}
     <div className="plan-image-actions">
       <button type="button" className="quiet" onClick={() => uploadInput.current?.click()}><ImagePlus size={17}/>{t('Kép feltöltése')}</button>

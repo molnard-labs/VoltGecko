@@ -3,6 +3,7 @@ import { History, Plus } from 'lucide-react';
 import { t } from '../i18n';
 import type { ProjectDocument } from '../types';
 import { formatDate } from './format';
+import './history-view.css';
 
 interface Props {
   document: ProjectDocument;
@@ -20,7 +21,7 @@ export function HistoryView({ document, onSave, onRestore }: Props) {
           <h2>{t('Előzmények')}</h2>
           <p>{t('Mentett állapotok, amelyekhez később is visszatérhetsz.')}</p>
         </div>
-        <span className="large-count">{document.revisions.length}</span>
+        <span className="history-count">{t('{count} mentett változat', {count: document.revisions.length})}</span>
       </div>
       <div className="revision-compose">
         <input

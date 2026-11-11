@@ -2,7 +2,7 @@ import { t } from '../../i18n';
 import type { Asset, Device, ProjectData, ProjectDocument, WiringEndpoint } from '../../types';
 import { isDeviceVariantForKind } from '../../catalog';
 import { effectiveDevicePoles } from '../boardWiring';
-import { isPlanImageAsset } from '../planAppearance';
+import { isPlanImageAsset } from '../planImageAsset';
 import { fail, identifier, object, text, type JsonObject } from './format';
 import { readAssets } from './assets';
 import { isBoardPlannerSnapshot } from '../../services/plannerBridge';

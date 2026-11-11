@@ -13,13 +13,13 @@ async function exerciseToolbar(page: Page) {
   await expect(page.locator('.circuit-card')).toHaveCount(8);
   await expect(page.getByLabel('ÁK8 neve', {exact:true})).toBeFocused();
   await page.getByLabel('ÁK8 neve', {exact:true}).fill('Konyha új kör');
-  await page.locator('.editor-area').evaluate(element => { element.scrollTop = 0; });
+  await page.locator('.circuit-cards').evaluate(element => { element.scrollTop = 0; });
   await page.locator('.workspace').evaluate(element => { element.scrollTop = 0; });
-  await page.locator('.editor-area').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.locator('.circuit-cards').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.locator('.workspace').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await expect(add).toBeInViewport();
   const geometry = await page.evaluate(() => {
-    const workspace = document.querySelector('.workspace')!, editor = document.querySelector('.editor-area')!;
+    const workspace = document.querySelector('.workspace')!, editor = document.querySelector('.circuit-cards')!;
     const bar = document.querySelector('.workspace-header')!;
     return {workspaceTop: workspace.getBoundingClientRect().top, barTop: bar.getBoundingClientRect().top,
       editorScroll: editor.scrollTop, workspaceScroll: workspace.scrollTop};
