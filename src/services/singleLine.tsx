@@ -4,6 +4,7 @@ import { getBoardConnectionIssues, getBoardDevices } from '../data/boardConnecti
 import { endpointConductor, wiringEndpointLabel, getWiringIssues } from '../data/boardWiring';
 import { wireColorAppearance } from '../data/wireColors';
 import { circuitBelongsToBoard } from '../data/circuitBoardAssociation';
+import { circuitPhaseConnectionLabel } from './circuitPhaseLabels';
 import type { Board, Circuit, Device, ProjectData, WiringEndpoint, CableDetails } from '../types';
 
 interface GraphNode {
@@ -142,7 +143,6 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
   const boardCircuits = data.circuits.filter(circuit => combined
     ? data.boards.some(item => circuitBelongsToBoard(data,circuit,item.id))
     : circuitBelongsToBoard(data,circuit,board.id));
-  const circuitIds = new Set(boardCircuits.map(circuit => circuit.id));
   const nodes = new Map<string, GraphNode>();
   const ports = new Map<string, GraphPort[]>();
   const addPort = (nodeKey:string, port:GraphPort) => {
@@ -154,8 +154,7 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
     const key = deviceKey(id);
     if (!nodes.has(key)) {
       const device = devices.get(id);
-      const circuits = device ? data.circuits.filter(circuit => !circuitIds.has(circuit.id) && (circuit.protectionDeviceId === id || (!circuit.protectionDeviceId && circuit.id === device.circuitId))) : [];
-      nodes.set(key, { key, device, missingId: device ? undefined : id, circuits, incoming: 0, x: 0, y: 0, height: 166 + circuits.length * 70, rank: 0 });
+      nodes.set(key, { key, device, missingId: device ? undefined : id, circuits: [], incoming: 0, x: 0, y: 0, height: 166, rank: 0 });
     }
     return key;
   };
@@ -218,19 +217,6 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
       edges.push({from,to:key,id:`circuit:${circuit.id}:${item.boardId}:${item.conductor}`,index:edges.length,undirected:true,
         color:appearance.color,stripe:appearance.stripe,fromPort,toPort,
         label:`${circuit.code} · ${item.conductor} ↔ ${wiringEndpointLabel(data,item.endpoint)}`});
-    }
-    // A manually selected protective device remains a legacy, non-terminal-level association.
-    const hasProtectionTerminal = terminals.some(item => ['L','L1','L2','L3'].includes(item.conductor) &&
-      item.endpoint.kind === 'device' && item.endpoint.deviceId === circuit.protectionDeviceId);
-    if (!hasProtectionTerminal && circuit.protectionDeviceId && (combined || devices.has(circuit.protectionDeviceId) &&
-      (board.rows.some(row => row.placements.some(item => item.deviceId === circuit.protectionDeviceId)) ||
-       devices.get(circuit.protectionDeviceId)?.boardId === board.id))) {
-      const from = ensureDevice(circuit.protectionDeviceId);
-      const toPort = JSON.stringify(['legacy',circuit.id]);
-      addPort(key,{key:toPort,label:'?',color:'#777777'});
-      nodes.get(from)!.incoming++; nodes.get(key)!.incoming++;
-      edges.push({from,to:key,id:`protection:${circuit.id}`,index:edges.length,undirected:true,unspecified:true,toPort,
-        label:`${t('Védelmi készülék')}: ${devices.get(circuit.protectionDeviceId)?.code ?? ''} · ${circuit.code}`});
     }
   }
   // Place the supply first regardless of the order in which a connection was entered.
@@ -349,13 +335,13 @@ export function buildSingleLineSvg(data: ProjectData, board: Board, combined=fal
     notices += noticeLines.map((line, index) => text(MARGIN, footerY + 99 + index * 18, line, 11, '#96692c')).join('');
   }
   const tableWidth = width - MARGIN * 2, column = tableWidth / 4;
-  const tableHead = [t('Áramkör'), t('Védelem'), t('Kábel / vezeték'), t('Rögzített teljesítmény (W)')];
+  const tableHead = [t('Áramkör'), t('Fázisbekötés'), t('Kábel / vezeték'), t('Rögzített teljesítmény (W)')];
   const grid = `<rect x="${MARGIN}" y="${tableY}" width="${tableWidth}" height="${tableRowHeight * (uniqueCircuitRows.length + 1)}" fill="none" stroke="#171717"/>` +
     [1,2,3].map(i=>`<path d="M${MARGIN + i * column} ${tableY}V${tableY + tableRowHeight * (uniqueCircuitRows.length + 1)}" stroke="#777"/>`).join('') +
     tableHead.map((value,i)=>wrapped(MARGIN + i * column + 6,tableY + 17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#111',700)).join('') +
-    uniqueCircuitRows.map(({node,circuit},index)=>{
+    uniqueCircuitRows.map(({circuit},index)=>{
       const y=tableY + tableRowHeight * (index + 1);
-      const values=[`${circuit.code} · ${circuit.name}`,node.device?.code ?? (circuit.protectionDeviceId ? devices.get(circuit.protectionDeviceId)?.code : undefined) ?? '—',circuitCableLabel(circuit) || '—',circuit.powerW===undefined?'—':`${circuit.powerW.toLocaleString(getLocale())} W`];
+      const values=[`${circuit.code} · ${circuit.name}`,circuitPhaseConnectionLabel(data,circuit,combined ? undefined : board.id),circuitCableLabel(circuit) || '—',circuit.powerW===undefined?'—':`${circuit.powerW.toLocaleString(getLocale())} W`];
       return `<path d="M${MARGIN} ${y}H${MARGIN + tableWidth}" stroke="#777"/>` + values.map((value,i)=>wrapped(MARGIN + i*column + 6,y+17,value,Math.max(8,Math.floor((column-12)/6)),1,10,'#222')).join('');
     }).join('');
   const legacyKey = edges.some(edge=>edge.unspecified) ? `<path d="M${MARGIN} 119h32" stroke="#161616" stroke-width="1.8" stroke-dasharray="6 4"/>${text(MARGIN+40,123,t('Szaggatott vonal: korábbi, részletezetlen kapcsolat.'),10,'#333333')}` : '';

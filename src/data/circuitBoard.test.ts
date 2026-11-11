@@ -4,7 +4,7 @@ import { decodeProject, encodeProject, validateProject } from './archive';
 import { createProject, deleteBoard, deleteDevice } from './project';
 import { circuitProtectionCandidates, reconcileAutoProtections } from './floorRouteProtection';
 import { getPhaseLoads, getWiringIssues } from './boardWiring';
-import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, deleteCircuit, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, migrateLegacyCircuitBoardConnections, preserveSingleBoardCircuits, pruneCircuitBoardConnections, setCircuitBoardPosition, setCircuitBoardTerminalPoints, setCircuitBoardVisible } from './circuitBoard';
+import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, deleteCircuit, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, migrateLegacyCircuitBoardConnections, preserveSingleBoardCircuits, pruneCircuitBoardConnections, setCircuitBoardPosition, setCircuitBoardTerminalPoints, setCircuitBoardVisible, setCircuitBoardsVisible } from './circuitBoard';
 
 function fixture() {
   const doc = createProject('Test');
@@ -22,6 +22,52 @@ function fixture() {
 }
 
 describe('circuit-based board connections', () => {
+  it('globally hides and restores the drawing without altering terminals, wire bends, position or protective assignment', async () => {
+    const {doc,board,breaker,terminal} = fixture();
+    let connected = assignCircuitBoardTerminal(doc.data,'c',board.id,'L',terminal);
+    connected = setCircuitBoardPosition(connected,'c',board.id,{x:120,y:360});
+    connected = setCircuitBoardTerminalPoints(connected,'c',board.id,'L',[{x:30,y:40}]);
+    const prior = connected.circuits[0];
+    expect(prior.protectionDeviceId).toBe(breaker.id);
+    expect(getCircuitBoardConnections(connected,board.id)).toHaveLength(1);
+    const hidden = setCircuitBoardsVisible(connected,'c',false);
+    expect(hidden.circuits[0].hideOnBoards).toBe(true);
+    expect(getCircuitBoardConnections(hidden,board.id)).toHaveLength(0);
+    expect(getCircuitBoardConnections(hidden,board.id,{includeGloballyHidden:true})).toHaveLength(1);
+    expect(hidden.circuits[0].boardConnections).toEqual(prior.boardConnections);
+    expect(hidden.circuits[0].protectionDeviceId).toBe(prior.protectionDeviceId);
+    const saved = await decodeProject(await encodeProject({...doc,data:hidden}));
+    expect(saved.data.circuits[0].hideOnBoards).toBe(true);
+    const restored = setCircuitBoardsVisible(saved.data,'c',true);
+    expect(restored.circuits[0].hideOnBoards).toBeUndefined();
+    expect(restored.circuits[0].boardConnections).toEqual(prior.boardConnections);
+    expect(getCircuitBoardConnections(restored,board.id)).toHaveLength(1);
+    const invalid = structuredClone(saved);
+    (invalid.data.circuits[0] as unknown as {hideOnBoards:string}).hideOnBoards = 'yes';
+    expect(() => validateProject(invalid)).toThrow();
+  });
+  it('retains implicit single-board membership if a globally hidden circuit gains another board', () => {
+    const {doc,board} = fixture();
+    const hidden = setCircuitBoardsVisible(doc.data,'c',false);
+    const expanded = {...hidden,boards:[...hidden.boards,{...structuredClone(board),id:'second',rows:[]}]};
+    const next = preserveSingleBoardCircuits(hidden,expanded);
+    expect(next.circuits[0].boardConnections).toEqual([{boardId:board.id,terminals:[]}]);
+    expect(getCircuitBoardConnections(next,board.id)).toHaveLength(0);
+    const restored = setCircuitBoardsVisible(next,'c',true);
+    expect(getCircuitBoardConnections(restored,board.id)).toHaveLength(1);
+    expect(getCircuitBoardConnections(restored,'second')).toHaveLength(0);
+  });
+  it('preserves individual board hiding when global visibility is turned off and on', () => {
+    const {doc,board} = fixture();
+    const other = {...structuredClone(board),id:'other',rows:[]};
+    let next = {...doc.data,boards:[...doc.data.boards,other]};
+    next = setCircuitBoardVisible(next,'c',board.id,true);
+    next = setCircuitBoardVisible(next,'c',other.id,false);
+    next = setCircuitBoardsVisible(setCircuitBoardsVisible(next,'c',false),'c',true);
+    expect(getCircuitBoardConnections(next,board.id)).toHaveLength(1);
+    expect(getCircuitBoardConnections(next,other.id)).toHaveLength(0);
+    expect(next.circuits[0].boardConnections?.find(item => item.boardId === other.id)?.hidden).toBe(true);
+  });
   it('retains individual conductor routes through endpoint changes, archive export and import', async () => {
     const {doc,board,terminal} = fixture();
     const points = [{x:20,y:40},{x:50,y:40}];

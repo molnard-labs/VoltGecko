@@ -11,11 +11,12 @@ export const circuitEndpointKey = (endpoint: WiringEndpoint): string => endpoint
   : JSON.stringify(['infeed',endpoint.infeedId,endpoint.pole]);
 
 /** Project circuits are visible on the only board, otherwise only on their selected or protective-device board. */
-export function getCircuitBoardConnections(data: ProjectData, boardId: string): {circuit:Circuit; connection:CircuitBoardConnection}[] {
+export function getCircuitBoardConnections(data: ProjectData, boardId: string, options: {includeGloballyHidden?:boolean; includeLocallyHidden?:boolean} = {}): {circuit:Circuit; connection:CircuitBoardConnection}[] {
   if (!data.boards.some(board => board.id === boardId)) return [];
   return data.circuits.flatMap(circuit => {
     const stored = circuit.boardConnections?.find(item => item.boardId === boardId);
-    if (stored?.hidden) return [];
+    if (circuit.hideOnBoards && !options.includeGloballyHidden) return [];
+    if (stored?.hidden && !options.includeLocallyHidden) return [];
     if (!circuitBelongsToBoard(data,circuit,boardId)) return [];
     return [{circuit,connection:stored ?? {boardId,terminals:[]}}];
   });
@@ -26,7 +27,7 @@ export function preserveSingleBoardCircuits(previous:ProjectData, next:ProjectDa
   if (previous.id !== next.id || previous.boards.length !== 1 || next.boards.length <= 1) return next;
   const boardId = previous.boards[0].id;
   if (!next.boards.some(board => board.id === boardId)) return next;
-  const visible = new Set(getCircuitBoardConnections(previous,boardId).map(item => item.circuit.id));
+  const visible = new Set(getCircuitBoardConnections(previous,boardId,{includeGloballyHidden:true}).map(item => item.circuit.id));
   let changed = false;
   const circuits = next.circuits.map(circuit => {
     if (!visible.has(circuit.id) || circuit.boardConnections?.some(connection => connection.boardId === boardId)) return circuit;
@@ -34,6 +35,15 @@ export function preserveSingleBoardCircuits(previous:ProjectData, next:ProjectDa
     return {...circuit,boardConnections:[...(circuit.boardConnections ?? []),{boardId,terminals:[]}]};
   });
   return changed ? {...next,circuits} : next;
+}
+
+/** Globally hide a circuit's board drawings without changing its board memberships or wiring. */
+export function setCircuitBoardsVisible(data:ProjectData, circuitId:string, visible:boolean):ProjectData {
+  const circuit = data.circuits.find(item => item.id === circuitId);
+  if (!circuit || !!circuit.hideOnBoards === !visible) return data;
+  const next = {...circuit};
+  if (visible) delete next.hideOnBoards; else next.hideOnBoards = true;
+  return {...data,circuits:data.circuits.map(item => item.id === circuitId ? next : item)};
 }
 
 function updateConnection(data: ProjectData, circuitId: string, boardId: string, edit:(connection:CircuitBoardConnection)=>void): ProjectData {

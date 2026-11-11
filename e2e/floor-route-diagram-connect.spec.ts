@@ -40,11 +40,11 @@ test('connects the unassigned circuit on the board drawing and reconnects it wit
   await expect(page.getByRole('status').filter({hasText:'Kiválasztott áramköri vezető: L'})).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('status').filter({hasText:'Kiválasztott áramköri vezető: L'})).toHaveCount(0);
-  await pe.click();
+  await pe.locator('circle').first().click();
   await breakerBottom.click();
   await expect(page.getByRole('alert').filter({hasText:'nem ehhez az elosztóhoz vagy vezetőhöz'})).toBeVisible();
   await page.keyboard.press('Escape');
-  await l.click();
+  await l.locator('circle').first().click();
   await breakerBottom.click();
   await expect.poll(async () => (await documentData(page)).data.circuits.find(item => item.id === circuit.id)?.boardConnections?.find(item => item.boardId === board.id)?.terminals).toEqual([
     {conductor:'L',endpoint:{kind:'device',deviceId:breaker.id,side:'bottom',pole:0}}
@@ -54,7 +54,7 @@ test('connects the unassigned circuit on the board drawing and reconnects it wit
   expect((await documentData(page)).data.boards[0].wiring?.wires ?? []).toHaveLength(0);
   // The other click order is also supported, and reconnects the same conductor.
   await breakerTop.click();
-  await l.click();
+  await l.locator('circle').first().click();
   await expect.poll(async () => (await documentData(page)).data.circuits.find(item => item.id === circuit.id)?.boardConnections?.find(item => item.boardId === board.id)?.terminals[0].endpoint).toEqual({kind:'device',deviceId:breaker.id,side:'top',pole:0});
   await page.reload();
   await reopenRecentProject(page);
@@ -62,5 +62,5 @@ test('connects the unassigned circuit on the board drawing and reconnects it wit
   await expect(diagram.locator(`[data-circuit-link="${circuit.id}"][data-conductor="L"]`)).toBeVisible();
   await expect.poll(async () => (await documentData(page)).data.circuits.find(item => item.id === circuit.id)?.boardConnections?.find(item => item.boardId === board.id)?.terminals[0].endpoint).toEqual({kind:'device',deviceId:breaker.id,side:'top',pole:0});
   await page.locator('.view-tabs').getByRole('button', { name:'Áramkörök', exact:true }).click();
-  await expect(page.getByLabel('ÁK4 védelme', { exact:true })).toHaveValue(breaker.id);
+  await expect(page.getByLabel('ÁK4 védelme', { exact:true })).toContainText('QF1 · felső 1 (L)');
 });

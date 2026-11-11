@@ -114,6 +114,13 @@ test('assigns an unassigned single-phase device from a phase bus in either order
   for(const [index,power]of [1200,900,800].entries())await page.getByLabel(`${original.data.circuits[index].code} teljesítménye`,{exact:true}).fill(String(power));
   await page.getByLabel(`${original.data.circuits[2].code} fázisa`,{exact:true}).selectOption('L1');
   await openBoard(page);
+  // A phase load follows the actual circuit terminal, not an old manual protection label.
+  const diagram = page.locator('.wiring-diagram');
+  for (const [index,code] of ['QF1','QF2'].entries()) {
+    const circuit = diagram.locator(`[data-circuit-id="${original.data.circuits[index].id}"]`);
+    await circuit.getByRole('button',{name:/^L · .*áramköri végpont/}).locator('circle').first().click();
+    await diagram.getByRole('button',{name:`${code} · alsó 1 (L)`,exact:true}).click();
+  }
   for(const [index,conductor]of ['L2','L3'].entries()){
     await page.getByRole('button',{name:'Sín hozzáadása',exact:true}).click();await page.locator('.wiring-item>summary').nth(index).click();await page.getByLabel(`${index+1}. sín vezetője`,{exact:true}).selectOption(conductor);
   }

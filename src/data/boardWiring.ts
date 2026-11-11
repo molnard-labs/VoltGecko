@@ -4,6 +4,7 @@ import { getBoardTerminalWarnings } from './boardTerminalWarnings';
 import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
 import { balancingPhases } from './projectPhases';
 import { circuitBelongsToBoard } from './circuitBoardAssociation';
+import { getCircuitPhaseConnections } from './circuitPhaseConnections';
 
 const phases: Phase[] = ['L1', 'L2', 'L3'];
 
@@ -384,7 +385,13 @@ function boardCircuits(data: ProjectData, board: Board): Circuit[] {
   );
 }
 function circuitDevice(data: ProjectData, circuit: Circuit): Device | undefined {
-  if (circuit.protectionDeviceId) return data.devices.find((device) => device.id === circuit.protectionDeviceId);
+  const terminals = getCircuitPhaseConnections(data, circuit);
+  if (terminals.length) {
+    if (terminals.some(item => item.kind !== 'connected' || item.endpoint.kind !== 'device')) return undefined;
+    const ids = new Set(terminals.flatMap(item => item.kind === 'connected' && item.endpoint.kind === 'device' ? [item.endpoint.deviceId] : []));
+    if (ids.size !== 1) return undefined;
+    return data.devices.find(device => ids.has(device.id));
+  }
   const associated = data.devices.filter((device) => device.circuitId === circuit.id);
   // An imported contactor or cabinet outlet can carry a load without being a
   // protection device; prefer that cabinet device over floor-plan consumers.

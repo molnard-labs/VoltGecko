@@ -374,6 +374,7 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     if (!/^#[0-9a-fA-F]{6}$/.test(entry.color as string)) fail('az áramkör színe nem hatjegyű hexadecimális szín.');
     reference(entry.protectionDeviceId, devices, 'Áramkör védelme', true);
     if (entry.protectionAuto !== undefined && typeof entry.protectionAuto !== 'boolean') fail('az automatikus védelmi hozzárendelés érvénytelen.');
+    if (entry.hideOnBoards !== undefined && typeof entry.hideOnBoards !== 'boolean') fail('hibás áramköri elosztóláthatóság.');
     if (entry.cable !== undefined) text(entry.cable, 'Áramköri kábel', 5000);
     if (entry.powerW !== undefined) {
       finite(entry.powerW, 'Rögzített teljesítmény');

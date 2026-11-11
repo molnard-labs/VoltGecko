@@ -543,7 +543,8 @@ export default function App() {
                     let n = 1;
                     while (data.circuits.some(circuit => circuit.code === `ÁK${n}`)) n++;
                     const id = uid();
-                    changeData({ ...data, circuits:[...data.circuits, { id, code:`ÁK${n}`, name:t('Új áramkör'), color:colors[data.circuits.length % colors.length], notes:'' }] });
+                    const selectedBoard = data.boards.find(board => board.id === boardId);
+                    changeData({ ...data, circuits:[...data.circuits, { id, code:`ÁK${n}`, name:t('Új áramkör'), color:colors[data.circuits.length % colors.length], notes:'', ...(data.boards.length > 1 && selectedBoard ? {boardConnections:[{boardId:selectedBoard.id,terminals:[]}]} : {}) }] });
                     setNewCircuitId(id);
                   }}><Plus size={16}/>{t('Új áramkör')}</button>
                 )}

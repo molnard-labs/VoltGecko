@@ -63,6 +63,7 @@ describe('service language boundaries', () => {
     expect(pdfCalls.text).toContain('DETAILED PLAN DOCUMENTATION');
     expect(pdfCalls.text).toContain('Device schedule');
     expect(pdfCalls.text).toContain('Circuit schedule');
+    expect(pdfCalls.text).toContain('Phase connection');
     expect(pdfCalls.text).toContain('Client: Állapot');
     expect(pdfCalls.text).toContain('Planned');
     expect(pdfCalls.text).toContain('LÁMPA-01');
@@ -158,5 +159,33 @@ describe('service language boundaries', () => {
     expect(connections).toContain('ÁK1 · Dugalj');
     expect(connections).toContain('PE sín · 1 (PE)');
     expect(pdfCalls.text).toContain(`${board.name} · egyvonalas rajz`);
+  });
+
+  it('prints the actual phase terminal in the professional circuit schedule instead of stale manual protection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    stubPdfDiagramRaster();
+    const doc = createProject('Projekt'), board = doc.data.boards[0];
+    const old = makeDevice('breaker', []), actual = makeDevice('breaker', [old]);
+    old.code = 'OLD_QF'; actual.code = 'LIVE_QF';
+    old.electrical = {poles:['L']}; actual.electrical = {poles:['L']};
+    old.circuitId = 'own'; actual.circuitId = 'c';
+    doc.data.devices.push(old,actual);
+    board.rows[0].placements = [{deviceId:old.id,start:0},{deviceId:actual.id,start:1}];
+    doc.data.circuits = [
+      {id:'c',code:'ÁK1',name:'Dugalj',color:'#ff0000',notes:'',protectionDeviceId:old.id,boardConnections:[{
+        boardId:board.id,hidden:true,terminals:[{conductor:'L',endpoint:{kind:'device',deviceId:actual.id,side:'bottom',pole:0}}],
+      }]},
+      {id:'own',code:'ÁK2',name:'Egyéb',color:'#123456',notes:''},
+    ];
+    const before = structuredClone(doc);
+    await buildPdf(doc, 'professional');
+    const circuitSchedule = pdfCalls.text.slice(pdfCalls.text.indexOf('Áramkörjegyzék'));
+    expect(circuitSchedule).toContain('Fázisbekötés');
+    expect(circuitSchedule).toContain('L · LIVE_QF · alsó 1 (L)');
+    expect(circuitSchedule).not.toContain('OLD_QF');
+    const deviceSchedule = pdfCalls.text.slice(pdfCalls.text.indexOf(`${board.name} · készülékjegyzék`),pdfCalls.text.indexOf(`${board.name} · áramköri csatlakozások`));
+    expect(deviceSchedule[deviceSchedule.indexOf('OLD_QF')+3]).toBe('ÁK2');
+    expect(deviceSchedule[deviceSchedule.indexOf('LIVE_QF')+3]).toBe('ÁK1');
+    expect(doc).toEqual(before);
   });
 });

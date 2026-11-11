@@ -121,7 +121,7 @@ describe('single-line SVG', () => {
     expect(buildSingleLineSvg(data,board).svg).toBe(first);
     expect(buildProjectSingleLineSvg(data).svg.match(/data-circuit-id="c"/g)).toHaveLength(1);
   });
-  it('keeps a manual protective association until the active conductor is connected to that device', () => {
+  it('does not draw a manual protective assignment as an electrical connection', () => {
     const {data,board,devices} = fixture();
     board.connections = [];
     devices[2].electrical = {poles:['L','N']}; devices[3].electrical = {poles:['L']};
@@ -130,9 +130,13 @@ describe('single-line SVG', () => {
       boardId:board.id,terminals:[{conductor:'N',endpoint:{kind:'device',deviceId:devices[2].id,side:'bottom',pole:1}}],
     }]}];
     const connection = data.circuits[0].boardConnections![0];
-    expect(buildSingleLineSvg(data,board).svg).toContain('data-connection-id="protection:c"');
+    expect(buildSingleLineSvg(data,board).svg).not.toContain('data-connection-id="protection:c"');
+    expect(buildSingleLineSvg(data,board).svg).toContain('Nincs fázisbekötés');
     connection.terminals.push({conductor:'L',endpoint:{kind:'device',deviceId:devices[3].id,side:'bottom',pole:0}});
-    expect(buildSingleLineSvg(data,board).svg).toContain('data-connection-id="protection:c"');
+    const wired = buildSingleLineSvg(data,board).svg;
+    expect(wired).not.toContain('data-connection-id="protection:c"');
+    expect(wired).toContain(`data-connection-id="circuit:c:${board.id}:L"`);
+    expect(wired).toContain(`C1 · L ↔ ${devices[3].code} · alsó 1 (L)`);
     connection.terminals[1].endpoint = {kind:'device',deviceId:devices[2].id,side:'bottom',pole:0};
     expect(buildSingleLineSvg(data,board).svg).not.toContain('data-connection-id="protection:c"');
   });
@@ -160,8 +164,8 @@ describe('single-line SVG', () => {
     devices[2].model = 'Schneider EZ9F57116';
     data.circuits.push({ id: 'circuit', code: 'ÁK1', name: 'Dugaljak', color: '#287c68', notes: '', protectionDeviceId: devices[2].id, cable: 'NYM-J 3 × 2,5 mm²', powerW: 2300 });
     const result = buildSingleLineSvg(data, board);
-    expect(result.svg.match(/data-connection-id=/g)).toHaveLength(5);
-    expect(result.svg).toContain('data-connection-id="protection:circuit"');
+    expect(result.svg.match(/data-connection-id=/g)).toHaveLength(4);
+    expect(result.svg).not.toContain('data-connection-id="protection:circuit"');
     expect(result.svg.match(/data-device-id=/g)).toHaveLength(4);
     for (const value of ['3 × 400 / 230 V', 'Schneider EZ9F57116', 'NYM-J 3 × 2,5 mm²', '2300 W', 'B16', 'ÁK1 · Dugaljak']) expect(result.svg).toContain(value);
     expect(result.svg).not.toContain(`data-device-id="${devices[4].id}"`);
@@ -283,6 +287,7 @@ describe('single-line SVG', () => {
     expect(result.svg).not.toContain('with direction arrows');
     expect(result.svg).toContain('Input unspecified');
     expect(result.svg).toContain('Single-line diagram');
+    expect(result.svg).toContain('Phase connection');
     expect(result.svg).not.toContain('Nincs megadva a bemenet');
   });
 });

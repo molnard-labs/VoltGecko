@@ -1,0 +1,4 @@
+.circuit-phase-connection { display: grid; gap: .35rem; color: var(--text-secondary); font-size: .875rem; }
+.circuit-phase-connection-value { display: grid; gap: .5rem; padding: .65rem .75rem; color: var(--text); border: 1px solid var(--line); border-radius: 6px; overflow-wrap: anywhere; }
+.circuit-phase-connection-value small { display: block; margin-top: .2rem; color: var(--text-secondary); line-height: 1.4; }
+.circuit-phase-connection > small { line-height: 1.4; }

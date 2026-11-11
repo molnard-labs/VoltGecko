@@ -1,0 +1,3 @@
+.circuit-card .circuit-board-visibility{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:44px;cursor:pointer}
+.circuit-card .circuit-board-visibility input{width:24px;height:24px;min-width:24px;min-height:24px;margin:0;padding:0;cursor:pointer}
+.circuit-board-local-hidden{margin:0 0 6px 34px;font-size:.8rem;line-height:1.4}

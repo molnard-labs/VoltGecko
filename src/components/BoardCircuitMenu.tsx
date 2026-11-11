@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, circuitEndpointKey, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, setCircuitBoardPosition, setCircuitBoardVisible } from '../data/circuitBoard';
+import { adoptUnassignedLegacyBoardRoute, assignCircuitBoardTerminal, circuitEndpointKey, getCircuitBoardConnections, getUnassignedLegacyBoardRoutes, setCircuitBoardPosition, setCircuitBoardVisible, setCircuitBoardsVisible } from '../data/circuitBoard';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
 import { wiringEndpointLabel } from '../data/boardWiring';
 import type { ProjectData } from '../types';
@@ -10,17 +10,23 @@ export function BoardCircuitMenu({ data, boardId, onChange, onOpenCircuits }: {
 }) {
   if (!data.boards.some(board => board.id === boardId)) return null;
   const shown = getCircuitBoardConnections(data, boardId);
+  // Historical conflicts must remain resolvable even if a circuit is hidden.
+  const withConflicts = getCircuitBoardConnections(data, boardId, {includeGloballyHidden:true,includeLocallyHidden:true});
   const orphaned = getUnassignedLegacyBoardRoutes(data, boardId);
   const visible = new Set(shown.map(item => item.circuit.id));
-  const hasConflicts = orphaned.length > 0 || shown.some(({connection}) => connection.legacyPositionConflict || connection.legacyTerminalConflicts?.length);
+  const hasConflicts = orphaned.length > 0 || withConflicts.some(({connection}) => connection.legacyPositionConflict || connection.legacyTerminalConflicts?.length);
   return <details className="board-circuit-menu">
     <summary>{t('Áramkörök az elosztón')} {hasConflicts && <span aria-label={t('Korábbi bekötést ellenőrizni kell')}>⚠</span>}</summary>
     <div className="board-circuit-menu-content">
       <p>{t('Válaszd ki, mely áramkörök jelenjenek meg ebben az elosztóban.')}</p>
       {!data.circuits.length && <button type="button" className="quiet" onClick={onOpenCircuits}>{t('Áramkörök létrehozása')}</button>}
       {data.circuits.map(circuit => <label className="board-circuit-menu-item" key={circuit.id}>
-        <input type="checkbox" checked={visible.has(circuit.id)} onChange={event => onChange(setCircuitBoardVisible(data,circuit.id,boardId,event.target.checked))}/>
-        <span>{circuit.code} · {circuit.name}</span>
+        <input type="checkbox" checked={visible.has(circuit.id)} onChange={event => {
+          const checked = event.target.checked;
+          const next = checked ? setCircuitBoardsVisible(data,circuit.id,true) : data;
+          onChange(setCircuitBoardVisible(next,circuit.id,boardId,checked));
+        }}/>
+        <span>{circuit.code} · {circuit.name}{circuit.hideOnBoards ? ` · ${t('Minden elosztón rejtett')}` : ''}</span>
       </label>)}
       {orphaned.map(({sheet,route},index) => {
         const fromBoard = route.fromBoardId === boardId;
@@ -37,7 +43,7 @@ export function BoardCircuitMenu({ data, boardId, onChange, onOpenCircuits }: {
           {data.circuits.map(circuit => <option key={circuit.id} value={circuit.id}>{circuit.code} · {circuit.name}</option>)}
         </select>
       </label>;})}
-      {shown.map(({circuit,connection}) => <div key={circuit.id}>
+      {withConflicts.map(({circuit,connection}) => <div key={circuit.id}>
         {connection.legacyPositionConflict && <div className="board-circuit-conflict input-warning">
           <p>{t('{circuit}: a korábbi helyek eltértek. Helyezd el újra az áramkört.', {circuit:circuit.code})}</p>
           {connection.legacyPositionOptions?.map((point,index) => <button type="button" className="quiet" key={`${point.x}:${point.y}`}

@@ -1,5 +1,8 @@
 /** System-generated service text only; project content is never translated. */
 export const enServices: Record<string, string> = {
+  'Nincs fázisbekötés': 'No phase terminal connected',
+  'Fázisbekötés': 'Phase connection',
+  'Ellenőrizendő': 'Needs review',
   '{board} · áramköri csatlakozások': '{board} · circuit connections',
   '{board} · alaprajzi csatlakozások': '{board} · floor-plan connections',
   'Másik végpont': 'Other endpoint',

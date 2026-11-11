@@ -3,12 +3,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { assignCircuitBoardTerminal, getCircuitBoardConnections } from '../data/circuitBoard';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
-import { circuitProtectionStatus } from '../data/floorRouteProtection';
 import { projectPhases } from '../data/projectPhases';
 import { wiringEndpointLabel } from '../data/boardWiring';
 import type { Board, Circuit, CircuitBoardConnection, Conductor, ProjectData, WiringEndpoint } from '../types';
 import { encodeEndpoint, getEndpointOptions, parseEndpoint } from './board-wiring/endpoints';
-import { ProtectionConflict } from './ProtectionConflict';
 import './board-circuit-panel.css';
 
 interface Props { data:ProjectData; board:Board; onChange:(data:ProjectData)=>void }
@@ -26,7 +24,6 @@ function CircuitTerminals({ data, board, circuit, connection, onChange }: Props 
   const canAdd = !!selected && !!value && matching(selected).some(option => encodeEndpoint(option.value) === value);
   return <details className="board-circuit-item" data-testid="board-circuit-item">
     <summary><strong>{circuit.code} · {circuit.name}</strong><span>{t('{count} vezető', {count:connection.terminals.length})}</span></summary>
-    <ProtectionConflict data={data} status={circuitProtectionStatus(data,circuit.id)} onChange={onChange}/>
     {!connection.terminals.length && <p className="subtle">{t('Még nincs kapocshoz rendelt vezető.')}</p>}
     {connection.terminals.map(item => {
       const selectedValue=encodeEndpoint(item.endpoint), valid=matching(item.conductor).some(option=>encodeEndpoint(option.value)===selectedValue);

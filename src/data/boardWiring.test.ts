@@ -131,6 +131,7 @@ describe('detailed wiring documentation', () => {
       { id: 'large', code: '3', name: '', notes: '', color: '#123456', powerW: 500, protectionDeviceId: 'b' },
       { id: 'small', code: '4', name: '', notes: '', color: '#123456', powerW: 200, protectionDeviceId: 'b' },
     ];
+    for (const circuit of doc.data.circuits) circuit.boardConnections = [{boardId:board.id,terminals:[{conductor:'L',endpoint:d(circuit.protectionDeviceId!)}]}];
     expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 900, L2: 300, L3: 300, unassignedW: 700, totalW: 2200 });
     const before = structuredClone(doc.data), next = balanceUnassignedPhases(doc.data, board);
     expect(next.circuits.map(circuit => circuit.phase)).toEqual(['L1', undefined, 'L2', 'L2']);
@@ -146,10 +147,20 @@ describe('detailed wiring documentation', () => {
       { id: 'sibling', code: '2', name: '', notes: '', color: '#123456', powerW: 400, protectionDeviceId: 'a' },
       { id: 'other', code: '3', name: '', notes: '', color: '#123456', powerW: 900, protectionDeviceId: 'b' },
     ];
+    for (const circuit of doc.data.circuits) circuit.boardConnections = [{boardId:board.id,terminals:[{conductor:'L',endpoint:d(circuit.protectionDeviceId!)}]}];
     expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 0, L2: 0, L3: 1000, unassignedW: 900, totalW: 1900 });
     const next = balanceUnassignedPhases(doc.data, board);
     expect(next.circuits.map(circuit => circuit.phase)).toEqual(['L3', 'L3', 'L1']);
     expect(doc.data.circuits[1].phase).toBeUndefined();
+  });
+
+  it('uses the actual circuit terminal rather than an outdated manual protection for phase loads', () => {
+    const { doc, board } = fixture();
+    doc.data.devices[0].electrical = { poles:['L'], phase:'L1' };
+    doc.data.devices[1].electrical = { poles:['L'], phase:'L2' };
+    doc.data.circuits = [{id:'load',code:'1',name:'',notes:'',color:'#123456',powerW:500,
+      protectionDeviceId:'a',boardConnections:[{boardId:board.id,terminals:[{conductor:'L',endpoint:d('b')}]}]}];
+    expect(getPhaseLoads(doc.data, board)).toEqual({L:0,L1:0,L2:500,L3:0,unassignedW:0,totalW:500});
   });
 
   it('retains conflicting fixed siblings and reports the physical feeder conflict without guessing', () => {
@@ -160,6 +171,7 @@ describe('detailed wiring documentation', () => {
       { id: 'fixed2', code: '2', name: '', notes: '', color: '#123456', powerW: 400, phase: 'L2', protectionDeviceId: 'a' },
       { id: 'sibling', code: '3', name: '', notes: '', color: '#123456', powerW: 200, protectionDeviceId: 'a' },
     ];
+    for (const circuit of doc.data.circuits) circuit.boardConnections = [{boardId:board.id,terminals:[{conductor:'L',endpoint:d(circuit.protectionDeviceId!)}]}];
     expect(getWiringIssues(doc.data, board)).toContainEqual(expect.objectContaining({ code: 'phase-assignment-conflict', deviceId: 'a' }));
     expect(balanceUnassignedPhases(doc.data, board).circuits).toEqual(doc.data.circuits);
     expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 600, L2: 400, L3: 0, unassignedW: 200, totalW: 1200 });

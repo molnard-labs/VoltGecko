@@ -159,6 +159,10 @@ const translations: Record<string, string> = {
   'Áramkör neve': 'Circuit name',
   '{code} neve': '{code} name',
   'Védelmi készülék': 'Protective device',
+  'Megjelenítés az elosztó felületén': 'Show on the distribution board',
+  '{code}: Megjelenítés az elosztó felületén': '{code}: Show on the distribution board',
+  'Minden elosztón rejtett': 'Hidden on all distribution boards',
+  'Ezeken az elosztókon külön rejtett: {boards}': 'Hidden separately on these boards: {boards}',
   '{code} védelme': '{code} protection',
   'Nincs kiválasztva': 'None selected',
   'Megjegyzés': 'Note',
@@ -255,6 +259,10 @@ const translations: Record<string, string> = {
   'A fotók a projektfájlba is bekerülnek.': 'Photos are included in the project file.',
   'Mutasd az alaprajzon': 'Show on floor plan',
   'Eszköz törlése': 'Delete device',
+  'Nincs fázisbekötés az elosztón.': 'No phase connection on the distribution board.',
+  'Korábbi fázisbekötés tisztázandó az elosztón.': 'A previous phase connection needs to be resolved on the distribution board.',
+  'A túláramvédelmi készülék ebből a közvetlen bekötésből nem állapítható meg.': 'The overcurrent protective device cannot be determined from this direct connection.',
+  'Az elosztórajzon megadott fázisbekötés alapján.': 'Based on the phase connection on the distribution board diagram.',
 };
 
 export default translations;

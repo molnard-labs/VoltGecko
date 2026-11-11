@@ -10,7 +10,7 @@ test('confirms removal of circuit assignments when shrinking or deleting a suppl
   const circuit = diagram.locator('.wiring-circuit').first();
   const id = await circuit.getAttribute('data-circuit-id');
   const link = (conductor: string) => diagram.locator(`[data-circuit-link="${id}"][data-conductor="${conductor}"]`);
-  await circuit.getByRole('button', {name:/^PE · .*áramköri végpont/}).click();
+  await circuit.getByRole('button', {name:/^PE · .*áramköri végpont/}).locator('circle').first().click();
   await diagram.getByRole('button', {name:'Külső betáplálás · 3 (PE)',exact:true}).click();
   await expect(link('PE')).toBeVisible();
   const source = page.locator('.wiring-item').filter({ hasText:'Külső betáplálás' }).last();
@@ -25,7 +25,7 @@ test('confirms removal of circuit assignments when shrinking or deleting a suppl
   await expect(poles).toHaveValue('2');
   await expect(link('PE')).toHaveCount(0);
 
-  await circuit.getByRole('button', {name:/^N · .*áramköri végpont/}).click();
+  await circuit.getByRole('button', {name:/^N · .*áramköri végpont/}).locator('circle').first().click();
   await diagram.getByRole('button', {name:'Külső betáplálás · 2 (N)',exact:true}).click();
   await expect(link('N')).toBeVisible();
   page.once('dialog', dialog => dialog.dismiss());

@@ -17,6 +17,8 @@ import { floorRouteEndpoint, floorRoutePoints } from '../data/floorRoute';
 import { floorRouteCircuitId } from '../data/floorRouteCircuit';
 import { migrateLegacyCircuitBoardConnections } from '../data/circuitBoard';
 import { circuitBelongsToBoard } from '../data/circuitBoardAssociation';
+import { getCircuitPhaseConnections } from '../data/circuitPhaseConnections';
+import { circuitPhaseConnectionLabel } from './circuitPhaseLabels';
 import { boardImage } from '../products/boardImage';
 import { loadPhases } from '../data/projectPhases';
 
@@ -398,8 +400,11 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     const boardRows: string[][] = [];
     for (const row of board.rows) for (const placement of row.placements) {
       const device = deviceMap.get(placement.deviceId); if (!device) continue;
-      const circuits = doc.data.circuits.filter(circuit => circuit.protectionDeviceId === device.id).map(circuit => circuit.code).join(', ');
-      boardRows.push([row.name, String(placement.start + 1), String(device.moduleWidth ?? 1), device.code, `${device.name}\n${deviceLabel(device)}`, device.rating || '', circuits || (device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : ''), device.model]);
+      const circuits = boardData.circuits.filter(circuit => circuit.id === device.circuitId ||
+        getCircuitPhaseConnections(boardData,circuit).some(item =>
+          item.kind === 'connected' && item.boardId === board.id && item.endpoint.kind === 'device' && item.endpoint.deviceId === device.id
+        )).map(circuit => circuit.code).join(', ');
+      boardRows.push([row.name, String(placement.start + 1), String(device.moduleWidth ?? 1), device.code, `${device.name}\n${deviceLabel(device)}`, device.rating || '', circuits, device.model]);
     }
     table(t('{board} · készülékjegyzék', { board: board.name }), ['Sor', 'Kezdőhely', 'Modul', 'Azonosító', 'Készülék', 'Névleges adat', 'Áramkör', 'Típus / modell'], [35, 25, 20, 46, 96, 55, 35, 72], boardRows);
     const accessories = doc.data.devices.filter(device => device.boardId === board.id && device.product?.mounting === 'accessory');
@@ -457,7 +462,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
   if (audience === 'professional') {
     table(t('Eszközjegyzék'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Mag. mm', 'Modell', 'Állapot', 'Megjegyzés'], [43, 54, 30, 24, 20, 47, 27, 139], doc.data.devices.map(device => [device.code, `${device.name}\n${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', String(device.heightMm), [device.model, device.product && !device.model.includes(device.product.reference) ? device.product.reference : ''].filter(Boolean).join('\n'), t(statuses[device.status]), [device.product?.description?.[getLanguage()], device.notes].filter(Boolean).join('\n')]));
     const loadLabels={socket:'Dugalj',lamp:'Világítás',motor:'Motor',other:'Egyéb fogyasztó'};
-    table(t('Áramkörjegyzék'), ['Áramkör', 'Megnevezés', 'Védelem', 'Hozzárendelt fogyasztók', 'Kábel', 'Telj. W', 'Megjegyzés'], [25, 65, 35, 74, 60, 25, 100], doc.data.circuits.map(circuit => [circuit.code, [circuit.name,circuit.loadType?t(loadLabels[circuit.loadType]):''].filter(Boolean).join('\n'), circuit.protectionDeviceId ? deviceMap.get(circuit.protectionDeviceId)?.code || '' : '', doc.data.devices.filter(device => device.circuitId === circuit.id).map(device => `${device.code} · ${device.name}`).join('\n'), circuitCableLabel(circuit),circuit.powerW===undefined?'':circuit.powerW.toLocaleString(locale),circuit.notes]));
+    table(t('Áramkörjegyzék'), ['Áramkör', 'Megnevezés', 'Fázisbekötés', 'Hozzárendelt fogyasztók', 'Kábel', 'Telj. W', 'Megjegyzés'], [25, 65, 35, 74, 60, 25, 100], boardData.circuits.map(circuit => [circuit.code, [circuit.name,circuit.loadType?t(loadLabels[circuit.loadType]):''].filter(Boolean).join('\n'), circuitPhaseConnectionLabel(boardData,circuit), doc.data.devices.filter(device => device.circuitId === circuit.id).map(device => `${device.code} · ${device.name}`).join('\n'), circuitCableLabel(circuit),circuit.powerW===undefined?'':circuit.powerW.toLocaleString(locale),circuit.notes]));
   } else {
     table(t('Mi hova kerül?'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Állapot'], [43, 128, 70, 55, 88], doc.data.devices.map(device => [device.code, `${device.name} · ${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', t(statuses[device.status])]));
   }
