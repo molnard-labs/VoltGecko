@@ -1,5 +1,8 @@
 /** System-generated service text only; project content is never translated. */
 export const enServices: Record<string, string> = {
+  '{board} · alaprajzi csatlakozások': '{board} · floor-plan connections',
+  'Másik végpont': 'Other endpoint',
+  'Kapocs': 'Terminal',
   'A PDF betűkészlete nem érhető el. Nyisd meg egyszer online az alkalmazást, hogy az offline állományok letöltődjenek.': 'The PDF font is unavailable. Open the application online once to download the offline files.',
   'A PDF egyik háttérképe vagy fotója nem olvasható.': 'A background image or photo could not be read for the PDF.',
   'A böngészőben a PDF képfeldolgozása nem érhető el.': 'PDF image processing is unavailable in this browser.',

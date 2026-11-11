@@ -1,0 +1,7 @@
+.floor-board-routes{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.floor-board-routes h3{margin:0 0 8px}.floor-board-routes h3 .small-tag{vertical-align:middle}
+.floor-board-route-card{margin:12px 0 0;padding:14px;border:1px solid var(--line);border-radius:7px;background:var(--surface-subtle)}
+.floor-board-route-card h4{margin:0 0 5px;overflow-wrap:anywhere}.floor-board-route-card p{margin:6px 0 10px}
+.floor-board-route-card label{display:grid;gap:5px;font-size:.875rem}.floor-board-route-card select{max-width:100%;min-width:0}
+.floor-board-route-terminals{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}.floor-board-route-terminals strong{display:block;margin-bottom:8px}
+.floor-board-terminal,.floor-board-terminal-add{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0}.floor-board-terminal label,.floor-board-terminal-add label:nth-child(2){flex:1 1 210px}.floor-board-terminal .input-warning{flex-basis:100%}

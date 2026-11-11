@@ -112,6 +112,27 @@ describe('service language boundaries', () => {
     expect(schedule).toContain('Műhely elosztó');
   });
 
+  it('documents floor routes and their assigned board terminals in the PDF', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    const doc = createProject('Projekt');
+    const board = doc.data.boards[0];
+    board.name = 'Főelosztó';
+    board.wiring = { wires:[], infeeds:[], buses:[{ id:'n-bus', name:'N sín', conductor:'N', capacity:2, position:'bottom', terminalLabels:['', ''] }] };
+    const second = { ...structuredClone(board), id:'other-board', name:'Műhely', wiring:undefined };
+    doc.data.boards.push(second);
+    doc.data.circuits.push({ id:'circuit', code:'ÁK7', name:'Műhely', color:'#225533', notes:'' });
+    const sheet = doc.data.sheets[0];
+    sheet.boardPlacements = [{ boardId:board.id, x:100, y:100 }, { boardId:second.id, x:200, y:100 }];
+    sheet.routes = [{ id:'r', fromBoardId:board.id, toBoardId:second.id, explicitCircuitId:'circuit', kind:'power', points:[], boardTerminals:[{ boardId:board.id, conductor:'N', endpoint:{kind:'bus',busId:'n-bus',terminal:1} }] }];
+    await buildPdf(doc, 'professional');
+    const start = pdfCalls.text.indexOf('Főelosztó · alaprajzi csatlakozások');
+    expect(start).toBeGreaterThan(-1);
+    const connections = pdfCalls.text.slice(start, start + 15);
+    expect(connections).toContain('Műhely');
+    expect(connections).toContain('ÁK7 · Műhely');
+    expect(connections).toContain('N sín · 2 (N)');
+  });
+
   it('uses current device circuit assignments in the PDF connection schedule', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
     const doc = createProject('Projekt');

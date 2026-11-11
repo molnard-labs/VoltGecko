@@ -401,6 +401,22 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     table(t('{board} · készülékjegyzék', { board: board.name }), ['Sor', 'Kezdőhely', 'Modul', 'Azonosító', 'Készülék', 'Névleges adat', 'Áramkör', 'Típus / modell'], [35, 25, 20, 46, 96, 55, 35, 72], boardRows);
     const accessories = doc.data.devices.filter(device => device.boardId === board.id && device.product?.mounting === 'accessory');
     if (accessories.length) table(t('{board} · tartozékjegyzék', { board: board.name }), ['Azonosító', 'Cikkszám', 'Készülék', 'Mennyiség', 'Megjegyzés'], [35, 45, 104, 30, 170], accessories.map(device => [device.code, device.product!.reference, device.name, `${(device.quantity ?? 1).toLocaleString(locale)} ${t('db')}`, [device.product?.description?.[getLanguage()], device.notes].filter(Boolean).join('\n')]), board.product?.reference);
+    const floorConnections = doc.data.sheets.flatMap(sheet => sheet.routes
+      .filter(route => route.fromBoardId === board.id || route.toBoardId === board.id)
+      .flatMap(route => {
+        const fromBoard = route.fromBoardId === board.id;
+        const device = deviceMap.get((fromBoard ? route.toDeviceId : route.fromDeviceId) ?? '');
+        const otherBoard = doc.data.boards.find(item => item.id === (fromBoard ? route.toBoardId : route.fromBoardId));
+        const otherEnd = device ? `${device.code} · ${device.name}` : otherBoard?.name ?? '?';
+        const circuit = circuitMap.get(floorRouteCircuitId(route, deviceMap) ?? '');
+        const terminals = route.boardTerminals?.filter(item => item.boardId === board.id) ?? [];
+        const prefix = [sheet.name, otherEnd, circuit ? `${circuit.code} · ${circuit.name}` : ''];
+        return terminals.length
+          ? terminals.map(item => [...prefix, item.conductor, wiringEndpointLabel(doc.data, item.endpoint)])
+          : [[...prefix, '', t('Nincs hozzárendelve')]];
+      }));
+    if (floorConnections.length) table(t('{board} · alaprajzi csatlakozások', { board: board.name }),
+      ['Tervlap', 'Másik végpont', 'Áramkör', 'Vezető', 'Kapocs'], [70, 100, 70, 35, 109], floorConnections);
     if (issues.length) table(t('{board} · ellenőrzendő jelzések', { board: board.name }), ['Sor', 'Jelzés'], [55, WIDTH - 55], issues.map(issue => [board.rows.find(row => row.id === issue.rowId)?.name || '', issue.message]));
     if (board.connections?.length || board.wiring?.wires.length) {
       const drawing=buildSingleLineSvg(doc.data,board);

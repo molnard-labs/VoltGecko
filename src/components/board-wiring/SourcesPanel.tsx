@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { t } from '../../i18n';
 import { uid } from '../../catalog';
 import type { Board, BoardBus, BoardInfeed, BoardWiring, Conductor, Point, ProjectData } from '../../types';
@@ -31,9 +32,13 @@ export function SourcesPanel({
   onError,
   onClearError
 }: Props) {
+  const [poleFieldsVersion, setPoleFieldsVersion] = useState(0);
   const connectedEndpoints = data.boards.flatMap(
     (item) => item.wiring?.wires.flatMap((wire) => [wire.from, wire.to]) ?? []
   );
+  const floorEndpoints = data.sheets.flatMap(sheet => sheet.routes.flatMap(route =>
+    (route.boardTerminals ?? []).map(terminal => terminal.endpoint)));
+  const confirmFloorRemoval = () => window.confirm(t('Az érintett alaprajzi nyomvonalak kapocshozzárendelései törlődnek. Folytatod?'));
   return (
     <div className="wiring-panel">
       <h4>{t('Sínek és betáplálások')}</h4>
@@ -121,6 +126,10 @@ export function SourcesPanel({
                       onError(t('A kapacitás nem csökkenthető a bekötött vagy feliratozott kapcsok alá.'));
                       return;
                     }
+                    if (floorEndpoints.some(endpoint => endpoint.kind === 'bus' && endpoint.busId === bus.id && endpoint.terminal >= capacity) && !confirmFloorRemoval()) {
+                      e.currentTarget.value = String(bus.capacity);
+                      return;
+                    }
                     onPatchBus(bus.id, { capacity, terminalLabels: bus.terminalLabels.slice(0, capacity) });
                     onClearError();
                   }
@@ -200,6 +209,7 @@ export function SourcesPanel({
                   onNotify(t('A sínhez vezeték kapcsolódik. Előbb módosítsd vagy töröld a vezetéket.'));
                   return;
                 }
+                if (floorEndpoints.some(endpoint => endpoint.kind === 'bus' && endpoint.busId === bus.id) && !confirmFloorRemoval()) return;
                 onUpdate((value) => {
                   value.buses = value.buses.filter((item) => item.id !== bus.id);
                 });
@@ -238,6 +248,7 @@ export function SourcesPanel({
             </select>
           </label>
           <PoleFields
+            key={`${source.id}-${poleFieldsVersion}`}
             label={t('{number}. betáplálás pólusai', { number: index + 1 })}
             poles={source.poles}
             onChange={(poles) => {
@@ -248,6 +259,10 @@ export function SourcesPanel({
                 )
               ) {
                 onError(t('A pólusszám nem csökkenthető a bekötött pólusok alá.'));
+                return;
+              }
+              if (floorEndpoints.some(endpoint => endpoint.kind === 'infeed' && endpoint.infeedId === source.id && endpoint.pole >= poles.length) && !confirmFloorRemoval()) {
+                setPoleFieldsVersion(version => version + 1);
                 return;
               }
               onPatchInfeed(source.id, { poles });
@@ -322,6 +337,7 @@ export function SourcesPanel({
                 onNotify(t('A betápláláshoz vezeték kapcsolódik. Előbb módosítsd vagy töröld a vezetéket.'));
                 return;
               }
+              if (floorEndpoints.some(endpoint => endpoint.kind === 'infeed' && endpoint.infeedId === source.id) && !confirmFloorRemoval()) return;
               onUpdate((value) => {
                 value.infeeds = value.infeeds.filter((item) => item.id !== source.id);
               });

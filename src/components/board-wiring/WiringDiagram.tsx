@@ -3,6 +3,7 @@ import type { PointerEvent } from 'react';
 import { GripHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import { getBoardIssues } from '../../data/boardPlacement';
+import { floorRouteCircuitId } from '../../data/floorRouteCircuit';
 import { devicePhysicalPoleOrder, effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { automaticWireRoute } from '../../data/boardWireRouting';
 import type { RoutingTerminal, WiringObstacle } from '../../data/boardWireRouting';
@@ -367,6 +368,16 @@ export function useWiringDiagram(
     }
   });
   // A live preview must not change its own coordinate origin or scroll extent.
+  // Show the floor-plan connections below the cabinet without moving its existing
+  // rows, supplies, buses or wires. The visual links are derived, not board wires.
+  const floorRoutes = data.sheets.flatMap(sheet => sheet.routes
+    .filter(item => item.fromBoardId === board.id || item.toBoardId === board.id)
+    .map(item => ({ sheet, route: item })));
+  const floorRoutesY = maxY + 32;
+  if (floorRoutes.length) {
+    maxX = Math.max(maxX, 380);
+    maxY = floorRoutesY + floorRoutes.length * 82 + 20;
+  }
   const viewport = deviceDrag?.viewport ?? drag?.viewport ?? { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   const { width, height } = viewport;
   return {
@@ -384,6 +395,8 @@ export function useWiringDiagram(
     busOrigin,
     sourceOrigin,
     externalEndpoints,
+    floorRoutes,
+    floorRoutesY,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -479,6 +492,8 @@ export function WiringDiagram({
     busOrigin,
     sourceOrigin,
     externalEndpoints,
+    floorRoutes,
+    floorRoutesY,
     endpointPoint,
     route,
     wireLabelPoint,
@@ -552,6 +567,8 @@ export function WiringDiagram({
     ...wiring.infeeds.flatMap((source) => source.poles.map((_, pole): WiringEndpoint => ({ kind: 'infeed', infeedId: source.id, pole }))),
     ...externalEndpoints.values()
   ];
+  const localVisibleEndpoint = (endpoint: WiringEndpoint) =>
+    !externalEndpoints.has(encodeEndpoint(endpoint)) && visibleEndpoints.some(item => sameEndpoint(item, endpoint));
   const endpointAt = (clientX: number, clientY: number): WiringEndpoint | undefined => {
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return undefined;
@@ -691,6 +708,55 @@ export function WiringDiagram({
             </text>
           </g>
         ))}
+        {floorRoutes.map(({ sheet, route: floorRoute }, index) => {
+          const y = floorRoutesY + index * 82;
+          const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
+          return <g key={`floor-links-${sheet.id}-${floorRoute.id}`} aria-hidden="true" pointerEvents="none">
+            {connections.map((connection, connectionIndex) => {
+              // A project can contain a board device that has not yet been placed
+              // on a DIN row; do not draw a misleading wire to a fallback point.
+              if (!localVisibleEndpoint(connection.endpoint)) return null;
+              const start = { x: 55 + connectionIndex * 34, y };
+              const end = endpointPoint(connection.endpoint);
+              const midY = y - 20 - connectionIndex * 8;
+              const points = `${start.x},${start.y} ${start.x},${midY} ${end.x},${midY} ${end.x},${end.y}`;
+              const appearance = wireColorAppearance(defaultWireColor(connection.conductor));
+              return <g key={connection.conductor} data-floor-route-link={floorRoute.id} data-conductor={connection.conductor}>
+                <polyline points={points} fill="none" stroke="#fff" strokeWidth={7} strokeLinejoin="round" />
+                <polyline points={points} fill="none" stroke={appearance.color} strokeWidth={3} strokeDasharray="8 5" strokeLinejoin="round" />
+                {appearance.stripe && <polyline points={points} fill="none" stroke={appearance.stripe} strokeWidth={3} strokeDasharray="4 9" strokeLinejoin="round" />}
+              </g>;
+            })}
+          </g>;
+        })}
+        {floorRoutes.map(({ sheet, route: floorRoute }, index) => {
+          const y = floorRoutesY + index * 82;
+          const fromHere = floorRoute.fromBoardId === board.id;
+          const otherDeviceId = fromHere ? floorRoute.toDeviceId : floorRoute.fromDeviceId;
+          const otherBoardId = fromHere ? floorRoute.toBoardId : floorRoute.fromBoardId;
+          const otherDevice = otherDeviceId ? devicesById.get(otherDeviceId) : undefined;
+          const other = otherDevice ? `${otherDevice.code} · ${otherDevice.name}`
+            : data.boards.find(item => item.id === otherBoardId)?.name ?? '—';
+          const routeLabel = `${sheet.name} · ${other}`;
+          const circuit = data.circuits.find(item => item.id === floorRouteCircuitId(floorRoute, devicesById));
+          const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
+          return <g key={`floor-route-${sheet.id}-${floorRoute.id}`} className="wiring-floor-route" data-floor-route-id={floorRoute.id}>
+            <title>{`${t('Alaprajzi nyomvonal')}: ${routeLabel}${circuit ? ` · ${circuit.code}` : ''}`}</title>
+            <rect x={32} y={y} width={300} height={62} rx={6} fill="#f3f8f5" stroke="#638a74" />
+            <text x={44} y={y + 22} fontSize={13} fontWeight={600} fill="#174f3d">{t('Alaprajzi nyomvonal')} · {circuit?.code ?? '—'}</text>
+            <text x={44} y={y + 43} fontSize={12} fill="#365746">{routeLabel.length > 43 ? `${routeLabel.slice(0, 42)}…` : routeLabel}</text>
+            {!connections.length && <text x={320} y={y + 58} textAnchor="end" fontSize={10} fill="#5e7467">{t('Nincs kapocs hozzárendelve')}</text>}
+            {connections.map((connection, connectionIndex) => {
+              const visible = localVisibleEndpoint(connection.endpoint);
+              const x = 55 + connectionIndex * 34;
+              return <g key={connection.conductor}>
+                <title>{visible ? label(connection.endpoint) : t('Kapocs nem látható a rajzon')}</title>
+                <circle cx={x} cy={y} r={5} fill={visible ? '#276b50' : '#bf432c'} stroke="#fff" strokeWidth={1.5} />
+                <text x={x} y={y - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={visible ? '#174f3d' : '#a52f20'}>{connection.conductor}{visible ? '' : '!'}</text>
+              </g>;
+            })}
+          </g>;
+        })}
         {wiring.wires.map((wire, index) => {
           const currentRoute = route(wire, index).map((point, routeIndex, all) =>
             endpointDrag?.id === wire.id && endpointDrag.moved && ((endpointDrag.side === 'from' && routeIndex === 0) || (endpointDrag.side === 'to' && routeIndex === all.length - 1)) ? endpointDrag.point : point);

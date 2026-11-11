@@ -1,11 +1,12 @@
 import { t } from '../../i18n';
-import type { Asset, Device, ProjectDocument } from '../../types';
+import type { Asset, Device, ProjectData, ProjectDocument, WiringEndpoint } from '../../types';
 import { isDeviceVariantForKind } from '../../catalog';
 import { effectiveDevicePoles } from '../boardWiring';
 import { isPlanImageAsset } from '../planAppearance';
 import { fail, identifier, object, text, type JsonObject } from './format';
 import { readAssets } from './assets';
 import { isBoardPlannerSnapshot } from '../../services/plannerBridge';
+import { isBoardRouteTerminalPresent } from '../boardRouteConnections';
 
 const kinds = new Set([
   'outlet',
@@ -237,6 +238,13 @@ function validateWiring(value: JsonObject, devices: unknown[]) {
         }
       }
     }
+  for (const sheet of value.sheets as JsonObject[])
+    for (const route of sheet.routes as JsonObject[])
+      for (const terminal of (route.boardTerminals as JsonObject[] | undefined) ?? []) {
+        endpoint(terminal.endpoint);
+        if (!isBoardRouteTerminalPresent(value as unknown as ProjectData, terminal.boardId as string, terminal.endpoint as unknown as WiringEndpoint))
+          fail('az alaprajzi kapcsolat kapcsa nem a megadott elosztóban található.');
+      }
 }
 
 function manufacturerSource(value: unknown) {
@@ -416,6 +424,21 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
         }
       }
       reference(route.circuitId, circuits, 'Kapcsolat áramköre', true);
+      reference(route.explicitCircuitId, circuits, 'Kapcsolat kiválasztott áramköre', true);
+      if (route.boardTerminals !== undefined) {
+        array(route.boardTerminals, 'Elosztói kapcsok', 14);
+        const assigned = new Set<string>();
+        for (const terminal of route.boardTerminals) {
+          object(terminal, 'Elosztói kapocs');
+          reference(terminal.boardId, boards, 'Kapcsolat elosztója');
+          if (terminal.boardId !== route.fromBoardId && terminal.boardId !== route.toBoardId)
+            fail('a kapocs elosztójának a kapcsolat végpontján kell lennie.');
+          if (typeof terminal.conductor !== 'string' || !conductors.has(terminal.conductor)) fail('ismeretlen vezetőfunkció.');
+          const key = `${terminal.boardId}:${terminal.conductor}`;
+          if (assigned.has(key)) fail('egy elosztóvezetőhöz csak egy kapocs tartozhat.');
+          assigned.add(key);
+        }
+      }
       if (route.kind !== 'power' && route.kind !== 'control') fail('ismeretlen kapcsolattípus.');
       array(route.points, 'Nyomvonalpontok', 10_000);
       for (const item of route.points) {

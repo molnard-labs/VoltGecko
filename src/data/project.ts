@@ -1,6 +1,7 @@
 import { uid } from '../catalog';
 import { t } from '../i18n';
 import type { ProjectData, ProjectDocument } from '../types';
+import { pruneInvalidBoardRouteTerminals } from './boardRouteConnections';
 
 export function createProject(name = t('Új projekt')): ProjectDocument {
   return {
@@ -78,7 +79,7 @@ export function deleteDevice(data: ProjectData, id: string): ProjectData {
   for (const circuit of next.circuits) {
     if (circuit.protectionDeviceId === id) delete circuit.protectionDeviceId;
   }
-  return next;
+  return pruneInvalidBoardRouteTerminals(next);
 }
 
 /** Remove a board while retaining its devices and all links with valid endpoints. */
@@ -101,7 +102,7 @@ export function deleteBoard(data: ProjectData, id: string): ProjectData {
       )
     );
   }
-  return next;
+  return pruneInvalidBoardRouteTerminals(next);
 }
 
 export function resolveImport(

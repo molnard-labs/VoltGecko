@@ -23,6 +23,7 @@ import { WiringDiagram, useWiringDiagram } from './board-wiring/WiringDiagram';
 import { EndpointSelect, WirePanel } from './board-wiring/WirePanel';
 import type { WireEstimate } from './board-wiring/WirePanel';
 import { SourcesPanel } from './board-wiring/SourcesPanel';
+import { FloorBoardRoutes } from './FloorBoardRoutes';
 import { insertWireBend } from './board-wiring/wireEditing';
 import './board-wiring/wire-toolbar.css';
 
@@ -168,6 +169,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
         </span>
       </div>
         <div className="wiring-content">
+          <FloorBoardRoutes data={data} board={board} onChange={onChange}/>
           <div className="row-actions wiring-presets">
             <button className="quiet" onClick={() => addPreset('terminal')}>
               <Plus size={14} />
