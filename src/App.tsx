@@ -48,6 +48,7 @@ import { WorkspaceHeader } from './app/WorkspaceHeader';
 import { getNavigation, type View } from './app/navigation';
 import { LazyFeature } from './app/LazyFeature';
 import './app/sheet-menu.css';
+import './app/workspace-toolbar.css';
 type Modal = 'projects' | 'new-project' | 'files' | 'settings' | 'help' | 'drive' | null;
 type Tool = FloorPlanProps['tool'];
 const FloorPlan = lazy(() => import('./components/FloorPlan').then((module) => ({ default: module.FloorPlan })));
@@ -71,6 +72,8 @@ export default function App() {
   const [boardId, setBoardId] = useState('');
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newCircuitId, setNewCircuitId] = useState<string>();
+  const [floorContextHost, setFloorContextHost] = useState<HTMLDivElement | null>(null);
   const [tool, setTool] = useState<Tool>('select');
   const [catalogEntry, setCatalogEntry] = useState<CatalogEntry>();
   const [modal, setModal] = useState<Modal>(null);
@@ -532,6 +535,16 @@ export default function App() {
                   ))}
               </div>
               <div className="toolbar-right">
+                {view === 'circuits' && (
+                  <button className="primary circuits-add" onClick={() => {
+                    const colors = ['#2d7d67', '#c29238', '#7286bc', '#c57363', '#8b72a6'];
+                    let n = 1;
+                    while (data.circuits.some(circuit => circuit.code === `ÁK${n}`)) n++;
+                    const id = uid();
+                    changeData({ ...data, circuits:[...data.circuits, { id, code:`ÁK${n}`, name:t('Új áramkör'), color:colors[data.circuits.length % colors.length], notes:'' }] });
+                    setNewCircuitId(id);
+                  }}><Plus size={16}/>{t('Új áramkör')}</button>
+                )}
                 {view === 'board' && (
                   <button
                     className="quiet"
@@ -589,6 +602,7 @@ export default function App() {
                   <SlidersHorizontal size={17} />
                 </button>
               </div>
+              {view === 'floor' && <div className="floor-context-host" ref={setFloorContextHost}/>}
             </div>
             {view === 'floor' && (
               <div className="plan-heading">
@@ -657,6 +671,7 @@ export default function App() {
                       onChange={changeData}
                       onAddDevice={addDevice}
                       onOpenBoard={(id) => { setBoardId(id); setSelectedId(null); setView('board'); }}
+                      selectionHost={floorContextHost}
                       onBoardPlaced={() => setTool('select')}
                       deviceToolLabel={catalogEntry?.label}
                       onNotify={notify}
@@ -723,7 +738,7 @@ export default function App() {
                   </div>
                 )}
                 {view === 'single-line' && <SingleLine data={data} boardId={boardId} onBoardChange={setBoardId} onSelect={setSelectedId} />}
-                {view === 'circuits' && <Circuits data={data} onChange={changeData} onSelect={setSelectedId} />}
+                {view === 'circuits' && <Circuits data={data} onChange={changeData} onSelect={setSelectedId} newCircuitId={newCircuitId} onNewCircuitFocused={() => setNewCircuitId(undefined)} />}
                 {view === 'history' && (
                   <HistoryView
                     key={doc.data.id}

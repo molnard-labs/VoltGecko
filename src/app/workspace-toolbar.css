@@ -1,0 +1,2 @@
+.workspace-toolbar { position:sticky; top:0; z-index:12; }
+.workspace-toolbar>.floor-context-host { flex:1 1 100%; height:44px; min-height:44px; min-width:0; overflow:hidden; }

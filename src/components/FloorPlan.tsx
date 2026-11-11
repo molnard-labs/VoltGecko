@@ -1,5 +1,6 @@
 import { t, getLocale } from '../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, WheelEvent } from 'react';
 import {
   Crosshair,
@@ -26,6 +27,7 @@ import { BoardMarkerGraphic } from './BoardMarkerGraphic';
 import './floor-board.css';
 import { insertWireBend, moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend } from './board-wiring/wireEditing';
 import './floor-route-edit.css';
+import './floor-context-actions.css';
 
 export interface FloorPlanProps {
   data: ProjectData;
@@ -43,6 +45,7 @@ export interface FloorPlanProps {
   onDropBackground?: (files: File[]) => void;
   deviceToolLabel?: string;
   tools?: ReactNode;
+  selectionHost?: HTMLElement | null;
 }
 
 type FloorEndpoint = { kind: 'device' | 'board'; id: string };
@@ -84,7 +87,8 @@ export function FloorPlan({
   onUploadBackground,
   onDropBackground,
   deviceToolLabel,
-  tools
+  tools,
+  selectionHost
 }: FloorPlanProps) {
   const display = getFloorPlanDisplay(data);
   const persistedSheet = data.sheets.find((s) => s.id === sheetId);
@@ -574,6 +578,74 @@ export function FloorPlan({
             ? t('{device} · kattints az elhelyezéshez', { device: deviceToolLabel || kindLabel(tool) })
             : '';
 
+  const selectionTools = (selectedRoute || selectedNoteId || selectedPlacement || (selectedBoard && selectedBoardPlacement)) ? (
+          <div className="floor-selection-tools">
+            {selectedBoard && selectedBoardPlacement && <><span>{t('Elosztó')}: {selectedBoard.name}</span>
+              <button className="floor-board-open" onClick={() => onOpenBoard(selectedBoard.id)}>{t('Elosztóterv megnyitása')}</button>
+            </>}
+            {selectedDevice && selectedPlacement && (
+              <>
+                <span>
+                  <span className="floor-selected-code">{selectedDevice.code}</span>
+                  {kindLabel(selectedDevice.kind)}
+                </span>
+                <button
+                  title={t('Forgatás 90°')}
+                  aria-label={t('Forgatás 90 fokkal')}
+                  onClick={() =>
+                    updateSheet((s) => ({
+                      ...s,
+                      placements: s.placements.map((p) =>
+                        p.deviceId === selectedId ? { ...p, rotation: (p.rotation + 90) % 360 } : p
+                      )
+                    }))
+                  }
+                >
+                  <RotateCw size={15} />
+                </button>
+              </>
+            )}
+            {selectedRoute && (
+              <>
+                <span>
+                  <RouteIcon size={15} />
+                  {selectedRoute.kind === 'control' ? t('Vezérlési kapcsolat') : t('Villamos kapcsolat')}
+                  {sheet.mmPerUnit
+                    ? ` · ${routeLength(selectedRoute).toLocaleString(getLocale(), { maximumFractionDigits: 1 })} m`
+                    : ''}
+                </span>
+                <small>{t('Pont vagy szakasz: húzás · kijelölt pont: Delete')}</small>
+                <button
+                  title={t('Töréspont hozzáadása')}
+                  aria-label={t('Töréspont hozzáadása')}
+                  onClick={() => {
+                    const points = orthogonalRoute(selectedRoutePoints);
+                    if (points.length < 2) return;
+                    const interior = insertWireBend(points, layers.grid);
+                    updateSheet((s) => ({ ...s, routes:s.routes.map((r) => r.id === selectedRoute.id
+                      ? { ...r, points:[points[0], ...interior, points[points.length - 1]] } : r) }));
+                    setSelectedBend(null);
+                  }}
+                ><Plus size={16}/></button>
+                {selectedBendIndex > 0 && <button
+                  title={t('Kijelölt töréspont törlése')}
+                  aria-label={t('Kijelölt töréspont törlése')}
+                  onClick={removeSelectedBend}
+                ><Trash2 size={15}/></button>}
+              </>
+            )}
+            {selectedNoteId && !selectedText && tool === 'note' && <span>{t('Megjegyzés · dupla kattintás: szerkesztés')}</span>}
+            <button
+              className="floor-delete-control"
+              title={t('Eltávolítás a tervlapról')}
+              aria-label={t('Kijelölt elem eltávolítása')}
+              onClick={removeSelected}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+  ) : null;
+
   return (
     <div
       className={`floor-workspace ${tool !== 'select' ? 'floor-tool-active' : ''} ${dragging ? 'floor-is-dragging' : ''} ${fileOver ? 'floor-file-over' : ''}`}
@@ -772,7 +844,10 @@ export function FloorPlan({
           </g>
         )}
         {layers.routes &&
-          sheet.routes.map((route) => {
+          // Render the selected route last within the route layer. Its hit areas
+          // and editing handles then take precedence over neighbouring routes,
+          // while devices, boards and annotations remain above the entire layer.
+          [...sheet.routes.filter(route => route.id !== selectedRouteId), ...sheet.routes.filter(route => route.id === selectedRouteId)].map((route) => {
             const selected = route.id === selectedRouteId;
             const routeCircuitId = floorRouteCircuitId(route, devices);
             const color = circuits.get(routeCircuitId ?? '')?.color ?? '#28775b';
@@ -782,6 +857,7 @@ export function FloorPlan({
             return (
               <g
                 key={route.id}
+                data-route-id={route.id}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!suppressClick.current) {
@@ -1105,73 +1181,7 @@ export function FloorPlan({
             <span>{t('Méretarány nincs beállítva')}</span>
           )}
         </div>
-        {(selectedRoute || selectedNoteId || selectedPlacement || (selectedBoard && selectedBoardPlacement)) && (
-          <div className="floor-selection-tools">
-            {selectedBoard && selectedBoardPlacement && <><span>{t('Elosztó')}: {selectedBoard.name}</span>
-              <button className="floor-board-open" onClick={() => onOpenBoard(selectedBoard.id)}>{t('Elosztóterv megnyitása')}</button>
-            </>}
-            {selectedDevice && selectedPlacement && (
-              <>
-                <span>
-                  <span className="floor-selected-code">{selectedDevice.code}</span>
-                  {kindLabel(selectedDevice.kind)}
-                </span>
-                <button
-                  title={t('Forgatás 90°')}
-                  aria-label={t('Forgatás 90 fokkal')}
-                  onClick={() =>
-                    updateSheet((s) => ({
-                      ...s,
-                      placements: s.placements.map((p) =>
-                        p.deviceId === selectedId ? { ...p, rotation: (p.rotation + 90) % 360 } : p
-                      )
-                    }))
-                  }
-                >
-                  <RotateCw size={15} />
-                </button>
-              </>
-            )}
-            {selectedRoute && (
-              <>
-                <span>
-                  <RouteIcon size={15} />
-                  {selectedRoute.kind === 'control' ? t('Vezérlési kapcsolat') : t('Villamos kapcsolat')}
-                  {sheet.mmPerUnit
-                    ? ` · ${routeLength(selectedRoute).toLocaleString(getLocale(), { maximumFractionDigits: 1 })} m`
-                    : ''}
-                </span>
-                <small>{t('Pont vagy szakasz: húzás · kijelölt pont: Delete')}</small>
-                <button
-                  title={t('Töréspont hozzáadása')}
-                  aria-label={t('Töréspont hozzáadása')}
-                  onClick={() => {
-                    const points = orthogonalRoute(selectedRoutePoints);
-                    if (points.length < 2) return;
-                    const interior = insertWireBend(points, layers.grid);
-                    updateSheet((s) => ({ ...s, routes:s.routes.map((r) => r.id === selectedRoute.id
-                      ? { ...r, points:[points[0], ...interior, points[points.length - 1]] } : r) }));
-                    setSelectedBend(null);
-                  }}
-                ><Plus size={16}/></button>
-                {selectedBendIndex > 0 && <button
-                  title={t('Kijelölt töréspont törlése')}
-                  aria-label={t('Kijelölt töréspont törlése')}
-                  onClick={removeSelectedBend}
-                ><Trash2 size={15}/></button>}
-              </>
-            )}
-            {selectedNoteId && !selectedText && tool === 'note' && <span>{t('Megjegyzés · dupla kattintás: szerkesztés')}</span>}
-            <button
-              className="floor-delete-control"
-              title={t('Eltávolítás a tervlapról')}
-              aria-label={t('Kijelölt elem eltávolítása')}
-              onClick={removeSelected}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        )}
+        {selectionHost ? createPortal(selectionTools, selectionHost) : selectionTools}
         <div className="floor-zoom-tools">
           <button
             className="floor-control"

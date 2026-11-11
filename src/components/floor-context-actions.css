@@ -1,0 +1,37 @@
+/* Keep contextual actions in the fixed, preallocated upper workspace row. */
+.floor-context-host .floor-selection-tools {
+  position: static;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: transparent;
+  box-shadow: none;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.floor-context-host .floor-selection-tools > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.floor-context-host .floor-selection-tools > button { flex: 0 0 auto; }
+.floor-context-host .floor-selection-tools > small { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 760px) {
+  .floor-context-host .floor-selection-tools > small { display: none; }
+}
