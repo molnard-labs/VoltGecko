@@ -39,6 +39,22 @@ async function tab(page: Page, name: string) {
 }
 
 async function configureGraph(page: Page): Promise<ProjectDocument> {
+  // A legacy load type is retained even though this field is no longer edited
+  // on the circuits page. Seed it before reopening the isolated test project.
+  await page.reload();
+  await page.evaluate(async () => new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('villamos-tervezo-local');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result, tx = db.transaction('projects', 'readwrite'), store = tx.objectStore('projects');
+      const get = store.get(localStorage.getItem('planner.activeProject'));
+      get.onerror = () => reject(get.error);
+      get.onsuccess = () => { const row = get.result; row.document.data.circuits[0].loadType = 'socket'; store.put(row); };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }));
+  await reopenRecentProject(page);
   const original = await readDocument(page);
   const main = original.data.devices.find(device => device.code === 'Q1')!;
   const rcd = original.data.devices.find(device => device.code === 'FI1')!;
@@ -62,7 +78,7 @@ async function configureGraph(page: Page): Promise<ProjectDocument> {
   await tab(page, 'Áramkörök');
   await page.getByLabel('ÁK1 kábele', { exact: true }).fill(cable);
   await page.getByLabel('ÁK1 teljesítménye', { exact: true }).fill('1234.5');
-  await page.getByLabel('ÁK1 fogyasztótípusa', { exact: true }).selectOption('socket');
+  await expect(page.getByLabel('ÁK1 fogyasztótípusa', { exact: true })).toHaveCount(0);
   await expect.poll(async () => {
     const circuit = (await readDocument(page)).data.circuits[0];
     return { cable: circuit.cable, powerW: circuit.powerW, loadType: circuit.loadType };

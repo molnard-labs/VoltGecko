@@ -4,6 +4,7 @@ import { GripHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import { getBoardIssues } from '../../data/boardPlacement';
 import { getCircuitBoardConnections } from '../../data/circuitBoard';
+import { visibleCircuitConnectors } from '../../data/circuitConnectors';
 import { projectPhases } from '../../data/projectPhases';
 import { devicePhysicalPoleOrder, effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { automaticWireRoute } from '../../data/boardWireRouting';
@@ -17,6 +18,7 @@ import type {
   BoardInfeed,
   BoardWire,
   BoardWiring,
+  Circuit,
   Conductor,
   CircuitBoardConnection,
   Point,
@@ -229,28 +231,27 @@ export function useWiringDiagram(
       ...wiring.infeeds.map((source, sourceIndex) => (source.position?.y ?? 110 + sourceIndex * 145) + 58));
     return connection.position ?? { x:100, y:occupiedBottom + 35 + index * 200 };
   };
-  const circuitConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
+  const circuitConductors = (circuit:Circuit, connections: { conductor: Conductor }[]): Conductor[] => {
     const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
       wiring.buses.some(bus => bus.conductor === 'PEN') ||
       [...devicePositions.keys()].some(id => effectiveDevicePoles(devicesById.get(id)!).includes('PEN'));
     const candidates: Conductor[] = [...projectPhases(data), 'N', 'PE'];
     if (hasPen) candidates.push('PEN');
-    for (const connection of connections) if (!candidates.includes(connection.conductor)) candidates.push(connection.conductor);
-    return candidates;
+    return visibleCircuitConnectors(circuit,candidates,connections);
   };
   // Circuit boxes are real drawing obstacles. Their terminals sit on the
   // left edge, so the router can approach each connection without crossing
   // the box (including while its owner is being dragged).
   for (const [index, {circuit, connection}] of boardCircuits.entries()) {
     const origin = boardCircuitPosition(circuit.id, connection, index);
-    const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+    const conductors = circuitConductors(circuit,[...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
     obstacles.push({...origin, width:CIRCUIT_BOX_WIDTH, height:circuitBoxHeight(conductors.length)});
   }
   const circuitWireById = new Map<string, {circuitId:string; conductor:Conductor; point:Point}>();
   const circuitWires: BoardWire[] = [];
   for (const [index, {circuit, connection}] of boardCircuits.entries()) {
     const origin = boardCircuitPosition(circuit.id, connection, index);
-    const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+    const conductors = circuitConductors(circuit,[...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
     for (const item of connection.terminals) {
       const endpoint = item.endpoint;
       const local = endpoint.kind === 'device' ? devicePositions.has(endpoint.deviceId)
@@ -439,7 +440,7 @@ export function useWiringDiagram(
   for (const [index, item] of boardCircuits.entries()) {
     const position = boardCircuitPosition(item.circuit.id, item.connection, index);
     minX = Math.min(minX, position.x - 100); minY = Math.min(minY, position.y - 25);
-    const conductors = circuitConductors([...item.connection.terminals, ...(item.connection.legacyTerminalConflicts ?? [])]);
+    const conductors = circuitConductors(item.circuit,[...item.connection.terminals, ...(item.connection.legacyTerminalConflicts ?? [])]);
     maxX = Math.max(maxX, position.x + CIRCUIT_BOX_WIDTH + 20); maxY = Math.max(maxY, position.y + circuitBoxHeight(conductors.length) + 20);
   }
   for (const wire of circuitWires) for (const point of route(wire, 0)) {
@@ -861,7 +862,7 @@ export function WiringDiagram({
         })}
         {boardCircuits.map(({ circuit, connection }, index) => {
           const origin = boardCircuitPosition(circuit.id, connection, index);
-          const conductors = circuitConductors([...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
+          const conductors = circuitConductors(circuit,[...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
           const height = circuitBoxHeight(conductors.length);
           const circuitLabel = circuit.code + ' · ' + circuit.name;
           return <g key={'circuit-box-' + circuit.id} className="wiring-circuit" data-circuit-id={circuit.id}>

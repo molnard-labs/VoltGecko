@@ -465,7 +465,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       const loads=getPhaseLoads(doc.data,board),factor=board.wiring.demandFactor??1;
       const shownPhases = loadPhases(doc.data, loads);
       const phaseWidth = 180 / shownPhases.length;
-      table(t('{board} · fázisterhelés',{board:board.name}),[...shownPhases.map(phase => `${phase} (W)`),'Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[...shownPhases.map(() => phaseWidth),90,114],[[...shownPhases.map(phase => loads[phase]),loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'));
+      table(t('{board} · fázisterhelés',{board:board.name}),[...shownPhases.map(phase => `${phase} (W)`),'Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[...shownPhases.map(() => phaseWidth),90,114],[[...shownPhases.map(phase => loads[phase]),loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],[t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'),t('Több kiválasztott fázisnál a teljesítmény a fázisonkénti megosztás megadása nélkül kiosztatlan marad.')].join(' '));
       const wiringIssues=getWiringIssues(doc.data,board);
       if(wiringIssues.length)table(t('Huzalozási jelzések'),['Jelzés'],[WIDTH],wiringIssues.map(issue=>[issue.message]));
     }

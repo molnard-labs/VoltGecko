@@ -383,6 +383,15 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     if (entry.loadType !== undefined && !['socket', 'lamp', 'motor', 'other'].includes(entry.loadType as string))
       fail('ismeretlen fogyasztótípus.');
     if (entry.phase !== undefined && !['L', 'L1', 'L2', 'L3'].includes(entry.phase as string)) fail('ismeretlen fázis.');
+    if (entry.conductors !== undefined) {
+      array(entry.conductors, 'Áramköri vezetők', 7);
+      const selected = new Set<string>();
+      for (const conductor of entry.conductors) {
+        if (typeof conductor !== 'string' || !conductors.has(conductor)) fail('ismeretlen áramköri vezetőfunkció.');
+        if (selected.has(conductor as string)) fail('az áramköri vezetőfunkció ismétlődik.');
+        selected.add(conductor as string);
+      }
+    }
     if (entry.boardConnections !== undefined) {
       array(entry.boardConnections, 'Áramkör elosztói', 500);
       const connectedBoards = new Set<string>();

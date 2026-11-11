@@ -3,6 +3,7 @@ import type { Board, CableDetails, Circuit, Conductor, Device, Phase, ProjectDat
 import { getBoardTerminalWarnings } from './boardTerminalWarnings';
 import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
 import { balancingPhases } from './projectPhases';
+import { recordedCircuitConductors } from './circuitConductors';
 import { circuitBelongsToBoard } from './circuitBoardAssociation';
 import { getCircuitPhaseConnections } from './circuitPhaseConnections';
 
@@ -418,16 +419,38 @@ function phaseGroups(data: ProjectData, circuits: Circuit[]): Map<string, Circui
   }
   return groups;
 }
+const isPhase = (value:Conductor):value is Phase => value === 'L' || value === 'L1' || value === 'L2' || value === 'L3';
+/** An explicit selection and physical endpoints can disagree in older or
+ * imported files. Do not silently apportion power while phase identity is
+ * ambiguous. In particular generic L together with numbered phases is not
+ * evidence of two independent conductors. */
+function explicitCircuitPhases(circuit:Circuit):Phase[] {
+  const selected=[...new Set((circuit.conductors ?? []).filter(isPhase))];
+  const connected=recordedCircuitConductors(circuit).filter(isPhase);
+  if (connected.some(phase => !selected.includes(phase))) return [];
+  if (selected.includes('L') && selected.some(phase => phase !== 'L')) return [];
+  return selected;
+}
 function fixedGroupPhases(data: ProjectData, circuits: Circuit[]): Phase[] {
   const fixed = new Set<Phase>();
   for (const circuit of circuits) {
-    if (circuit.phase) fixed.add(circuit.phase);
+    if (circuit.conductors !== undefined) {
+      for (const conductor of explicitCircuitPhases(circuit)) fixed.add(conductor);
+    } else if (circuit.phase) fixed.add(circuit.phase);
     const device = circuitDevice(data, circuit);
     if (!isThreePhase(device) && device?.electrical?.phase) fixed.add(device.electrical.phase);
   }
   return [...fixed];
 }
 function circuitPhases(data: ProjectData, circuit: Circuit, siblings: Circuit[]): Phase[] {
+  // The explicit conductor selection supersedes a legacy single phase. Empty
+  // selection means the user deliberately left the circuit unassigned.
+  if (circuit.conductors !== undefined) {
+    const selected=explicitCircuitPhases(circuit);
+    // Multiple phase conductors do not prove that the consumption is evenly
+    // balanced. A single total cannot be allocated without per-phase data.
+    return selected.length === 1 ? selected : [];
+  }
   if (circuit.phase) return [circuit.phase];
   if (isThreePhase(circuitDevice(data, circuit))) return phases;
   const fixed = fixedGroupPhases(data, siblings);
@@ -484,7 +507,8 @@ export function balanceUnassignedPhases(data: ProjectData, board: Board): Projec
     .map(([key, group]) => ({
       key,
       group,
-      unassigned: group.filter((circuit) => !circuit.phase),
+      // Never overwrite a deliberate conductor selection during balancing.
+      unassigned: group.filter((circuit) => circuit.conductors === undefined && !circuit.phase),
       fixed: fixedGroupPhases(data, group)
     }))
     .filter(

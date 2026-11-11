@@ -1,5 +1,13 @@
 /** System-generated service text only; project content is never translated. */
 export const enServices: Record<string, string> = {
+  'Kapocsadat a kijelölésen kívül': 'Terminal data outside the selection',
+  'Több kiválasztott fázisnál a teljesítmény a fázisonkénti megosztás megadása nélkül kiosztatlan marad.': 'When multiple phases are selected, power remains unallocated unless its distribution across phases is specified.',
+  'Kiválasztott vezetők': 'Selected conductors',
+  'Például: H07V-U vagy NYM-J': 'For example: H07V-U or NYM-J',
+  '{circuits}: {conductor}-kapocs nincs megadva az elosztóterven.': '{circuits}: no {conductor} terminal is specified in the board plan.',
+  'Beállított kábeladatok': 'Configured cable details',
+  'Kábelleírás': 'Cable description',
+  'Kábel / vezeték megnevezése': 'Cable / conductor description',
   'Hiányzó áramköri végpontok': 'Missing circuit terminals',
   '{circuits}: fáziskapocs nincs megadva az elosztóterven.': '{circuits}: no phase terminal is specified in the board plan.',
   '{circuits}: N-kapocs nincs megadva az elosztóterven.': '{circuits}: no N terminal is specified in the board plan.',

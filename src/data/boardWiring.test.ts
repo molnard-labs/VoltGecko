@@ -18,6 +18,33 @@ function fixture() {
   return { doc, board, wiring: board.wiring };
 }
 describe('detailed wiring documentation', () => {
+  it('uses the selected conductors for load phases and leaves explicit choices untouched when balancing', () => {
+    const {doc,board} = fixture();
+    doc.data.circuits = [
+      {id:'three',code:'1',name:'',notes:'',color:'#123456',powerW:900,phase:'L1',conductors:['L1','L2','L3','N','PE']},
+      {id:'single',code:'2',name:'',notes:'',color:'#123456',powerW:400,phase:'L1',conductors:['L2','N','PE']},
+      {id:'empty',code:'3',name:'',notes:'',color:'#123456',powerW:100,phase:'L3',conductors:[]},
+      {id:'legacy',code:'4',name:'',notes:'',color:'#123456',powerW:200,phase:'L3'},
+      {id:'pending',code:'5',name:'',notes:'',color:'#123456',powerW:50}
+    ];
+    // A three-phase selection alone does not imply equal phase loading.
+    expect(getPhaseLoads(doc.data,board)).toEqual({L:0,L1:0,L2:400,L3:200,unassignedW:1050,totalW:1650});
+    const before=structuredClone(doc.data),next=balanceUnassignedPhases(doc.data,board);
+    expect(next.circuits.slice(0,4)).toEqual(before.circuits.slice(0,4));
+    expect(next.circuits[4].phase).toBe('L1');
+    expect(doc.data).toEqual(before);
+  });
+  it('leaves conflicting or ambiguous phase assignments unallocated instead of inventing a load split', () => {
+    const {doc,board} = fixture();
+    doc.data.circuits = [
+      {id:'mismatch',code:'1',name:'',notes:'',color:'#123456',powerW:600,conductors:['L1','N'],boardConnections:[{boardId:board.id,terminals:[{conductor:'L2',endpoint:d('a')}]}]},
+      {id:'mixed',code:'2',name:'',notes:'',color:'#123456',powerW:300,conductors:['L','L1','N']},
+      {id:'aligned',code:'3',name:'',notes:'',color:'#123456',powerW:200,conductors:['L2','N'],boardConnections:[{boardId:board.id,terminals:[{conductor:'L2',endpoint:d('b')}]}]}
+    ];
+    expect(getPhaseLoads(doc.data,board)).toEqual({L:0,L1:0,L2:200,L3:0,unassignedW:900,totalW:1100});
+    const before=structuredClone(doc.data),next=balanceUnassignedPhases(doc.data,board);
+    expect(next.circuits).toEqual(before.circuits);
+  });
   it('uses the actual single-phase supply, preserves mismatched stored assignments and round-trips L', async () => {
     const { doc, board, wiring } = fixture();
     wiring.infeeds[0].poles = ['L', 'N', 'PE'];

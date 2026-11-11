@@ -1,0 +1,37 @@
+/* Keep all circuits on one horizontal strip without widening the page. */
+.circuits-view { min-width: 0; }
+.circuits-view .circuit-cards {
+  display: grid;
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(19rem, 22rem);
+  align-items: stretch;
+  gap: 18px;
+  max-width: 100%;
+  /* The horizontal scrollbar stays reachable even when a card contains a
+     long device list; its content can be scrolled vertically in the strip. */
+  max-height: calc(100dvh - 250px);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior-x: contain;
+  padding: 0 2px 16px;
+  scrollbar-width: auto;
+}
+.circuits-view .circuit-card { min-width: 0; }
+.circuit-conductors {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.circuit-conductors legend { padding: 0 5px; color: var(--text-secondary); font-size: 0.875rem; }
+.circuit-conductor-options { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.circuit-card label.circuit-conductor-option { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.circuit-conductor-option input { width: auto; margin: 0; }
+.circuit-conductor-hint { margin: 8px 0 0; color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4; }
+.circuit-conductor-hint p { margin: 0 0 6px; }
+.circuit-conductor-hint button { font-size: 0.8rem; }
+@media (max-width: 768px) {
+  /* Mobile's taller toolbar leaves less room below the section heading. */
+  .circuits-view .circuit-cards { max-height: max(14rem, calc(100dvh - 550px)); }
+}

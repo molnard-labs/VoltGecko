@@ -4,6 +4,7 @@ import type { BoardTopology, TopologyCircuitTerminal, TopologyDevice, TopologyDe
 import { wiringEndpointLabel } from '../data/boardWiring';
 import { circuitPhaseConnectionLabel } from './circuitPhaseLabels';
 import { missingCircuitTerminals } from './missingCircuitTerminals';
+import { recordedCircuitConductors } from '../data/circuitConductors';
 import type { DiagramNetSegment } from './diagramPages';
 import { drawSingleLineDeviceSymbol, drawSingleLineGroundSymbol, drawSingleLineLoadSymbol, getSingleLineDeviceRole, getSingleLinePoleLabel } from './singleLineSymbols';
 import type { Board, CableDetails, Circuit, Conductor, Device, ProjectData, WiringEndpoint } from '../types';
@@ -20,8 +21,14 @@ const xml = (value:unknown):string => String(value ?? '').replace(/[\x00-\x08\x0
 export const cableLabel = (cable?:CableDetails):string => cable ? [cable.material,cable.designation,cable.crossSectionMm2 !== undefined ? `${cable.cores ? `${cable.cores}×` : ''}${cable.crossSectionMm2} mm²` : '',cable.lengthM !== undefined ? `${cable.lengthM} m` : ''].filter(Boolean).join(' · ') : '';
 export const circuitCableLabel = (circuit:Circuit):string => {
   const details=circuit.cableDetails;
-  if(!details)return circuit.cable??'';
-  return details.designation||details.crossSectionMm2!==undefined ? cableLabel(details) : [circuit.cable,cableLabel(details)].filter(Boolean).join(' · ');
+  const structured=cableLabel(details),description=circuit.cable?.trim()??'';
+  const cable=description && structured && (details?.designation || details?.crossSectionMm2!==undefined)
+    ? `${t('Beállított kábeladatok')}: ${structured} · ${t('Kábelleírás')}: ${description}`
+    : [description,structured].filter(Boolean).join(' · ');
+  const selection=circuit.conductors === undefined ? '' : `${t('Kiválasztott vezetők')}: ${circuit.conductors.join(' / ') || '—'} (${circuit.conductors.length})`;
+  const outsideSelection=circuit.conductors === undefined ? [] : recordedCircuitConductors(circuit).filter(conductor=>!circuit.conductors!.includes(conductor));
+  const conflict=outsideSelection.length ? `${t('Kapocsadat a kijelölésen kívül')}: ${outsideSelection.join(' / ')}` : '';
+  return [cable,selection,conflict].filter(Boolean).join(' · ');
 };
 function text(x:number,y:number,value:unknown,size=11,weight=400,anchor='start',fill='#161616'):string {
   return `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" text-anchor="${anchor}" fill="${fill}">${xml(value)}</text>`;
@@ -349,9 +356,10 @@ export function buildSingleLineSvg(data:ProjectData,board:Board,combined=false):
     for(const entry of missing){
       const label=entry.conductor==='L'?'{circuits}: fáziskapocs nincs megadva az elosztóterven.'
         :entry.conductor==='N'?'{circuits}: N-kapocs nincs megadva az elosztóterven.'
-          :'{circuits}: PE-kapocs nincs megadva az elosztóterven.';
+          :entry.conductor==='PE'?'{circuits}: PE-kapocs nincs megadva az elosztóterven.'
+            :'{circuits}: {conductor}-kapocs nincs megadva az elosztóterven.';
       const owner=combined?data.boards.find(item=>item.id===entry.boardId)?.name:'';
-      const message=[owner,t(label,{circuits:entry.circuits.join(', ')})].filter(Boolean).join(' · ');
+      const message=[owner,t(label,{circuits:entry.circuits.join(', '),conductor:entry.conductor})].filter(Boolean).join(' · ');
       const count=lines(message,95).length;
       overview+=wrapped(MARGIN,y,message,95,11,400,'start','#a12d24');
       overviewBlocks.push({x:MARGIN,y:y-12,width:716,height:count*14});

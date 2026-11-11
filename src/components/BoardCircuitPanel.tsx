@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { assignCircuitBoardTerminal, getCircuitBoardConnections } from '../data/circuitBoard';
+import { visibleCircuitConnectors } from '../data/circuitConnectors';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
 import { projectPhases } from '../data/projectPhases';
 import { wiringEndpointLabel } from '../data/boardWiring';
@@ -15,7 +16,7 @@ function CircuitTerminals({ data, board, circuit, connection, onChange }: Props 
   const [conductor,setConductor] = useState<Conductor>('L');
   const [value,setValue] = useState('');
   const used = new Set(connection.terminals.map(item => item.conductor));
-  const candidates:Conductor[] = [...projectPhases(data),'N','PE','PEN'];
+  const candidates = visibleCircuitConnectors(circuit,[...projectPhases(data),'N','PE','PEN'],[...connection.terminals, ...(connection.legacyTerminalConflicts ?? [])]);
   const available = candidates.filter(item => !used.has(item));
   const selected = available.includes(conductor) ? conductor : available[0];
   const options = getEndpointOptions(data).filter(item => item.group === board.id);

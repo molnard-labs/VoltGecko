@@ -4,7 +4,7 @@ import { createProject } from '../data/project';
 import { setLanguage } from '../i18n';
 import { buildSingleLineSvg, buildProjectSingleLineSvg, circuitCableLabel } from './singleLine';
 import { diagramTiles } from './diagramPages';
-import type { Device } from '../types';
+import type { Circuit, Device } from '../types';
 
 afterEach(() => setLanguage('hu'));
 function fixture() {
@@ -90,6 +90,20 @@ describe('single-line SVG', () => {
   });
   it('retains manual circuit cable descriptions when only structured length is added',()=>{
     expect(circuitCableLabel({id:'c',code:'C',name:'Load',notes:'',color:'#123456',cable:'Existing NYM-J 3×2.5',cableDetails:{lengthM:10}})).toBe('Existing NYM-J 3×2.5 · 10 m');
+  });
+  it('distinguishes the selected cable section from a conflicting preserved description',()=>{
+    const circuit={id:'c',code:'C',name:'Load',notes:'',color:'#123456',cable:'H07V-U 3×2,5 mm²',cableDetails:{crossSectionMm2:1.5,material:'Cu' as const}};
+    expect(circuitCableLabel(circuit)).toBe('Beállított kábeladatok: Cu · 1.5 mm² · Kábelleírás: H07V-U 3×2,5 mm²');
+    expect(circuit.cable).toBe('H07V-U 3×2,5 mm²');
+  });
+  it('reports declared conductor selection separately from existing cable core data',()=>{
+    const circuit={id:'c',code:'C',name:'Load',notes:'',color:'#123456',conductors:['L','N'] as ('L'|'N')[],cableDetails:{cores:3,crossSectionMm2:2.5}};
+    expect(circuitCableLabel(circuit)).toBe('3×2.5 mm² · Kiválasztott vezetők: L / N (2)');
+    expect(circuit.cableDetails.cores).toBe(3);
+  });
+  it('makes a saved conductor selection conflicting with terminal data explicit',()=>{
+    const circuit:Circuit={id:'c',code:'C',name:'Load',notes:'',color:'#123456',conductors:['L'],boardConnections:[{boardId:'b',terminals:[{conductor:'N',endpoint:{kind:'bus',busId:'n',terminal:0}}]}]};
+    expect(circuitCableLabel(circuit)).toContain('Kiválasztott vezetők: L (1) · Kapocsadat a kijelölésen kívül: N');
   });
   it('draws each canonical circuit once with its actual board terminals independently of floor routes', () => {
     const {data,board,devices} = fixture();

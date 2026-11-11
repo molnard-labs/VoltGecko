@@ -109,10 +109,20 @@ test('creates useful device presets and keeps a bus used by another cabinet',asy
 
 test('assigns an unassigned single-phase device from a phase bus in either order and preserves explicit choices',async({page})=>{
   await page.goto('/');await chooseSample(page);
+  // Preserve a phase from an older saved project, now that this choice is no
+  // longer edited with a separate phase select in the circuits UI.
+  await page.reload();
+  await page.evaluate(async()=>new Promise<void>((resolve,reject)=>{
+    const open=indexedDB.open('villamos-tervezo-local');open.onerror=()=>reject(open.error);
+    open.onsuccess=()=>{const db=open.result,tx=db.transaction('projects','readwrite'),store=tx.objectStore('projects'),get=store.get(localStorage.getItem('planner.activeProject'));
+      get.onerror=()=>reject(get.error);get.onsuccess=()=>{const row=get.result;row.document.data.circuits[2].phase='L1';store.put(row);};
+      tx.onerror=()=>reject(tx.error);tx.oncomplete=()=>{db.close();resolve();};};
+  }));
+  await reopenRecentProject(page);
   const original=await readDocument(page),device=(code:string)=>original.data.devices.find(item=>item.code===code)!;
   await page.locator('.view-tabs').getByRole('button',{name:'Áramkörök',exact:true}).click();
   for(const [index,power]of [1200,900,800].entries())await page.getByLabel(`${original.data.circuits[index].code} teljesítménye`,{exact:true}).fill(String(power));
-  await page.getByLabel(`${original.data.circuits[2].code} fázisa`,{exact:true}).selectOption('L1');
+  await expect(page.getByLabel(`${original.data.circuits[2].code} fázisa`,{exact:true})).toHaveCount(0);
   await openBoard(page);
   // A phase load follows the actual circuit terminal, not an old manual protection label.
   const diagram = page.locator('.wiring-diagram');

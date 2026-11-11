@@ -358,6 +358,9 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             <p className="subtle">
               {t('Csak a még ki nem osztott áramkörök fázisát módosítja. A teljesítményadatokból számolt becslés.')}
             </p>
+            <p className="subtle">
+              {t('Több kiválasztott fázisnál a teljesítmény a fázisonkénti megosztás megadása nélkül kiosztatlan marad.')}
+            </p>
           </div>
           {issues.length > 0 && (
             <div className="validation-box">

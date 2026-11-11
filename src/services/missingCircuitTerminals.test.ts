@@ -46,4 +46,16 @@ describe('missing circuit terminal summary', () => {
     expect(missingCircuitTerminals(input, new Set(['a']))).toEqual([]);
     expect(missingCircuitTerminals(input, new Set())).toEqual([]);
   });
+
+  it('checks only explicitly selected conductors, including individual phases and PEN', () => {
+    const a = circuit('C1', [['a', 'L'], ['a', 'N']]);
+    a.circuit.conductors = ['L', 'N'];
+    const b = circuit('C2', [['a', 'L1'], ['a', 'PEN']]);
+    b.circuit.conductors = ['L1', 'L2', 'PEN'];
+    const c = circuit('C3', []);
+    c.circuit.conductors = [];
+    expect(missingCircuitTerminals([a,b,c], new Set(['a']))).toEqual([
+      {boardId:'a', conductor:'L2', circuits:['C2']},
+    ]);
+  });
 });
