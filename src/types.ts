@@ -22,7 +22,7 @@ export interface FloorBoardPlacement extends Point { boardId: string }
 export interface Route { id: string; fromDeviceId?: string; fromBoardId?: string; toDeviceId?: string; toBoardId?: string; kind: 'power' | 'control'; circuitId?: string; explicitCircuitId?: string; boardTerminals?: BoardRouteTerminal[]; points: Point[] }
 export interface Annotation extends Point { id: string; text: string; kind?: 'text'; fontSize?: number; color?: string }
 export interface PlanSheet { id: string; name: string; width: number; height: number; backgroundAssetId?: string; backgroundOpacity?: number; mmPerUnit?: number; placements: Placement[]; boardPlacements?: FloorBoardPlacement[]; routes: Route[]; annotations: Annotation[] }
-export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
+export interface Circuit { id: string; code: string; name: string; color: string; protectionDeviceId?: string; protectionAuto?: boolean; notes: string; cable?:string; powerW?:number; loadType?:'socket'|'lamp'|'motor'|'other'; phase?:Phase; cableDetails?:CableDetails }
 export interface BoardPlacement { deviceId: string; start: number }
 export interface BoardRow { id: string; name: string; capacity: number; placements: BoardPlacement[] }
 /** Device-level supply links, independent of floor-plan routes; no individual terminals. */

@@ -4,6 +4,7 @@ import { GripHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import { getBoardIssues } from '../../data/boardPlacement';
 import { floorRouteCircuitId } from '../../data/floorRouteCircuit';
+import { projectPhases } from '../../data/projectPhases';
 import { devicePhysicalPoleOrder, effectiveDevicePoles, endpointConductor, wiringEndpointLabel } from '../../data/boardWiring';
 import { automaticWireRoute } from '../../data/boardWireRouting';
 import type { RoutingTerminal, WiringObstacle } from '../../data/boardWireRouting';
@@ -16,6 +17,7 @@ import type {
   BoardInfeed,
   BoardWire,
   BoardWiring,
+  Conductor,
   Point,
   ProjectData,
   WiringEndpoint
@@ -456,6 +458,8 @@ interface Props {
   onSelectEndpoint: (endpoint: WiringEndpoint) => void;
   onReconnectEndpoint: (id: string, side: 'from' | 'to', endpoint: WiringEndpoint) => void;
   onNotify: (message: string) => void;
+  selectedFloorConnector?: { sheetId: string; routeId: string; conductor: Conductor };
+  onSelectFloorConnector?: (sheetId: string, routeId: string, conductor: Conductor) => void;
 }
 
 export function WiringDiagram({
@@ -472,7 +476,9 @@ export function WiringDiagram({
   onSelectDevice,
   onSelectEndpoint,
   onReconnectEndpoint,
-  onNotify
+  onNotify,
+  selectedFloorConnector,
+  onSelectFloorConnector
 }: Props) {
   const pePatternId = `wiring-pe-${useId().replace(/:/g, '')}`;
   const deviceClipId = `wiring-device-${useId().replace(/:/g, '')}`;
@@ -569,6 +575,15 @@ export function WiringDiagram({
   ];
   const localVisibleEndpoint = (endpoint: WiringEndpoint) =>
     !externalEndpoints.has(encodeEndpoint(endpoint)) && visibleEndpoints.some(item => sameEndpoint(item, endpoint));
+  const floorConductors = (connections: { conductor: Conductor }[]): Conductor[] => {
+    const hasPen = wiring.infeeds.some(infeed => infeed.poles.includes('PEN')) ||
+      wiring.buses.some(bus => bus.conductor === 'PEN') ||
+      [...devicePositions.keys()].some(id => effectiveDevicePoles(devicesById.get(id)!).includes('PEN'));
+    const candidates: Conductor[] = [...projectPhases(data), 'N', 'PE'];
+    if (hasPen) candidates.push('PEN');
+    for (const connection of connections) if (!candidates.includes(connection.conductor)) candidates.push(connection.conductor);
+    return candidates;
+  };
   const endpointAt = (clientX: number, clientY: number): WiringEndpoint | undefined => {
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return undefined;
@@ -711,11 +726,13 @@ export function WiringDiagram({
         {floorRoutes.map(({ sheet, route: floorRoute }, index) => {
           const y = floorRoutesY + index * 82;
           const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
+          const conductors = floorConductors(connections);
           return <g key={`floor-links-${sheet.id}-${floorRoute.id}`} aria-hidden="true" pointerEvents="none">
-            {connections.map((connection, connectionIndex) => {
+            {connections.map((connection) => {
               // A project can contain a board device that has not yet been placed
               // on a DIN row; do not draw a misleading wire to a fallback point.
               if (!localVisibleEndpoint(connection.endpoint)) return null;
+              const connectionIndex = conductors.indexOf(connection.conductor);
               const start = { x: 55 + connectionIndex * 34, y };
               const end = endpointPoint(connection.endpoint);
               const midY = y - 20 - connectionIndex * 8;
@@ -740,19 +757,27 @@ export function WiringDiagram({
           const routeLabel = `${sheet.name} · ${other}`;
           const circuit = data.circuits.find(item => item.id === floorRouteCircuitId(floorRoute, devicesById));
           const connections = (floorRoute.boardTerminals ?? []).filter(item => item.boardId === board.id);
+          const conductors = floorConductors(connections);
           return <g key={`floor-route-${sheet.id}-${floorRoute.id}`} className="wiring-floor-route" data-floor-route-id={floorRoute.id}>
             <title>{`${t('Alaprajzi nyomvonal')}: ${routeLabel}${circuit ? ` · ${circuit.code}` : ''}`}</title>
             <rect x={32} y={y} width={300} height={62} rx={6} fill="#f3f8f5" stroke="#638a74" />
             <text x={44} y={y + 22} fontSize={13} fontWeight={600} fill="#174f3d">{t('Alaprajzi nyomvonal')} · {circuit?.code ?? '—'}</text>
             <text x={44} y={y + 43} fontSize={12} fill="#365746">{routeLabel.length > 43 ? `${routeLabel.slice(0, 42)}…` : routeLabel}</text>
             {!connections.length && <text x={320} y={y + 58} textAnchor="end" fontSize={10} fill="#5e7467">{t('Nincs kapocs hozzárendelve')}</text>}
-            {connections.map((connection, connectionIndex) => {
-              const visible = localVisibleEndpoint(connection.endpoint);
+            {conductors.map((conductor, connectionIndex) => {
+              const connection = connections.find(item => item.conductor === conductor);
+              const visible = connection ? localVisibleEndpoint(connection.endpoint) : true;
+              const active = selectedFloorConnector?.sheetId === sheet.id && selectedFloorConnector.routeId === floorRoute.id && selectedFloorConnector.conductor === conductor;
               const x = 55 + connectionIndex * 34;
-              return <g key={connection.conductor}>
-                <title>{visible ? label(connection.endpoint) : t('Kapocs nem látható a rajzon')}</title>
-                <circle cx={x} cy={y} r={5} fill={visible ? '#276b50' : '#bf432c'} stroke="#fff" strokeWidth={1.5} />
-                <text x={x} y={y - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={visible ? '#174f3d' : '#a52f20'}>{connection.conductor}{visible ? '' : '!'}</text>
+              const title = t('{conductor} · {route}: alaprajzi végpont', { conductor, route: routeLabel });
+              const select = () => onSelectFloorConnector?.(sheet.id, floorRoute.id, conductor);
+              return <g key={conductor} role="button" tabIndex={0} aria-label={title} className={`wiring-floor-connector${active ? ' selected' : ''}`} data-conductor={conductor}
+                onClick={event => { event.stopPropagation(); select(); }}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); select(); } }}>
+                <title>{connection ? `${title} · ${visible ? label(connection.endpoint) : t('Kapocs nem látható a rajzon')}` : title}</title>
+                <circle cx={x} cy={y} r={14} fill="transparent" />
+                <circle cx={x} cy={y} r={active ? 8 : 6} fill={connection ? (visible ? '#276b50' : '#bf432c') : '#fff'} stroke={active ? '#ed9700' : '#276b50'} strokeWidth={active ? 3 : 2} />
+                <text x={x} y={y - 10} textAnchor="middle" fontSize={11} fontWeight={700} fill={visible ? '#174f3d' : '#a52f20'} pointerEvents="none">{conductor}{visible ? '' : '!'}</text>
               </g>;
             })}
           </g>;

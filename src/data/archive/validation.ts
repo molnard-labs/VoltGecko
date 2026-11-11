@@ -358,6 +358,7 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     for (const key of ['code', 'name', 'color', 'notes']) text(entry[key], `${t('Áramkör')}.${key}`);
     if (!/^#[0-9a-fA-F]{6}$/.test(entry.color as string)) fail('az áramkör színe nem hatjegyű hexadecimális szín.');
     reference(entry.protectionDeviceId, devices, 'Áramkör védelme', true);
+    if (entry.protectionAuto !== undefined && typeof entry.protectionAuto !== 'boolean') fail('az automatikus védelmi hozzárendelés érvénytelen.');
     if (entry.cable !== undefined) text(entry.cable, 'Áramköri kábel', 5000);
     if (entry.powerW !== undefined) {
       finite(entry.powerW, 'Rögzített teljesítmény');

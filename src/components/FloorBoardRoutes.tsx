@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { floorRouteCircuitId } from '../data/floorRouteCircuit';
+import { assignFloorRouteTerminal, routeProtectionStatus, syncRouteProtection } from '../data/floorRouteProtection';
 import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
 import { projectPhases } from '../data/projectPhases';
 import { wiringEndpointLabel } from '../data/boardWiring';
 import type { Board, Conductor, PlanSheet, ProjectData, Route, WiringEndpoint } from '../types';
 import { encodeEndpoint, getEndpointOptions, parseEndpoint } from './board-wiring/endpoints';
 import './floor-board-routes.css';
+import { ProtectionConflict } from './ProtectionConflict';
 
 interface Props { data: ProjectData; board: Board; onChange: (data: ProjectData) => void }
 
@@ -16,6 +18,7 @@ function RouteCard({ data, board, sheet, route, onChange }: Props & { sheet: Pla
   const [newEndpoint, setNewEndpoint] = useState('');
   const devices = new Map(data.devices.map(device => [device.id, device]));
   const routeCircuitId = floorRouteCircuitId(route, devices);
+  const protectionStatus = routeProtectionStatus(data, sheet.id, route.id);
   const inferred = data.circuits.find(circuit => circuit.id === routeCircuitId);
   const endpoints = getEndpointOptions(data).filter(option => option.group === board.id);
   const terminalOptions = (wire: Conductor) => endpoints.filter(option => isBoardRouteTerminalCompatible(data, board.id, wire, option.value));
@@ -40,14 +43,10 @@ function RouteCard({ data, board, sheet, route, onChange }: Props & { sheet: Pla
     const target = next.sheets.find(item => item.id === sheet.id)?.routes.find(item => item.id === route.id);
     if (!target) return;
     mutate(target);
-    onChange(next);
+    onChange(syncRouteProtection(next, sheet.id, route.id));
   };
-  const setTerminal = (wire: Conductor, endpoint: WiringEndpoint | undefined) => patch(target => {
-    const remaining = (target.boardTerminals ?? []).filter(item => item.boardId !== board.id || item.conductor !== wire);
-    if (endpoint) remaining.push({ boardId: board.id, conductor: wire, endpoint });
-    if (remaining.length) target.boardTerminals = remaining;
-    else delete target.boardTerminals;
-  });
+  const setTerminal = (wire: Conductor, endpoint: WiringEndpoint | undefined) =>
+    onChange(assignFloorRouteTerminal(data, sheet.id, route.id, board.id, wire, endpoint));
   return <article className="floor-board-route-card" data-testid="floor-board-route-card">
     <h4>{sheet.name} · {endName}</h4>
     <p className="subtle">{t(route.kind === 'control' ? 'Vezérlés' : 'Tápellátás')}</p>
@@ -61,6 +60,7 @@ function RouteCard({ data, board, sheet, route, onChange }: Props & { sheet: Pla
     </label>
     {!data.circuits.length && <p className="subtle">{t('Új áramkört az Áramkörök oldalon hozhatsz létre.')}</p>}
     {otherCircuits.length > 0 && <p className="input-warning" role="alert">{t('A nyomvonalhoz választott áramkör eltér a csatlakozó eszköz áramkörétől. Az eszköz hozzárendelése nem változott.')}</p>}
+    <ProtectionConflict data={data} status={protectionStatus} onChange={onChange}/>
     <div className="floor-board-route-terminals">
       <strong>{t('Kapocshoz rendelt vezetők')}</strong>
       {routeTerminals.length === 0 && <p className="subtle">{t('Még nincs kapocshoz rendelt vezető.')}</p>}

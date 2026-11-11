@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { checkpoint, restoreRevision } from '../data/project';
 import { pruneInvalidBoardRouteTerminals } from '../data/boardRouteConnections';
+import { reconcileAutoProtections } from '../data/floorRouteProtection';
 import { listProjects, saveProject } from '../data/storage';
 import { t } from '../i18n';
 import type { ProjectData, ProjectDocument, ProjectSummary } from '../types';
@@ -101,7 +102,7 @@ export function useProjectDocument(notify: (message: string) => void) {
     undo.current.push(structuredClone(current.data));
     if (undo.current.length > HISTORY_LIMIT) undo.current.shift();
     redo.current = [];
-    setDoc({ ...current, data: pruneInvalidBoardRouteTerminals(data), assets: assets ?? current.assets, updatedAt: new Date().toISOString() });
+    setDoc({ ...current, data: reconcileAutoProtections(pruneInvalidBoardRouteTerminals(data)), assets: assets ?? current.assets, updatedAt: new Date().toISOString() });
   };
   const moveHistory = (from: ProjectData[], to: ProjectData[]) => {
     const current = docRef.current;

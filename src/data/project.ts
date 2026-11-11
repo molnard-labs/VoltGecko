@@ -77,7 +77,7 @@ export function deleteDevice(data: ProjectData, id: string): ProjectData {
       );
   }
   for (const circuit of next.circuits) {
-    if (circuit.protectionDeviceId === id) delete circuit.protectionDeviceId;
+    if (circuit.protectionDeviceId === id) { delete circuit.protectionDeviceId; delete circuit.protectionAuto; }
   }
   return pruneInvalidBoardRouteTerminals(next);
 }

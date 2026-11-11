@@ -5,6 +5,8 @@ import { uid, makeDevice } from '../catalog';
 import { placeBoardDevice } from '../data/boardPlacement';
 import { defaultWireColor } from '../data/wireColors';
 import { loadPhases } from '../data/projectPhases';
+import { isBoardRouteTerminalCompatible } from '../data/boardRouteConnections';
+import { assignFloorRouteTerminal } from '../data/floorRouteProtection';
 import {
   assignConnectedPhase,
   endpointConductor,
@@ -12,7 +14,7 @@ import {
   getPhaseLoads,
   balanceUnassignedPhases
 } from '../data/boardWiring';
-import type { Board, BoardBus, BoardInfeed, BoardWire, BoardWiring, ProjectData, WiringEndpoint } from '../types';
+import type { Board, BoardBus, BoardInfeed, BoardWire, BoardWiring, Conductor, ProjectData, WiringEndpoint } from '../types';
 import {
   encodeEndpoint,
   getEndpointOptions,
@@ -46,6 +48,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   const [wireId, setWireId] = useState<string>();
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState<WireEstimate>();
+  const [floorConnector, setFloorConnector] = useState<{ sheetId: string; routeId: string; conductor: Conductor }>();
   const wiring = board.wiring ?? EMPTY;
   const locale = getLocale();
   const issues = useMemo(() => getWiringIssues(data, board), [data, board, locale]);
@@ -53,6 +56,13 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
   useEffect(() => {
     if (selectedId) setWireId(undefined);
   }, [selectedId]);
+  useEffect(() => { setFloorConnector(undefined); }, [board.id]);
+  useEffect(() => {
+    if (!floorConnector) return;
+    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') { setFloorConnector(undefined); setError(''); } };
+    window.addEventListener('keydown', cancel);
+    return () => window.removeEventListener('keydown', cancel);
+  }, [floorConnector]);
   const selectDevice = (id: string | null) => {
     setWireId(undefined);
     onSelect(id);
@@ -92,9 +102,34 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
       const source = value.infeeds.find((s) => s.id === id);
       if (source) Object.assign(source, patch);
     });
+  const connectFloorEndpoint = (selection: { sheetId: string; routeId: string; conductor: Conductor }, endpoint: WiringEndpoint) => {
+    if (!isBoardRouteTerminalCompatible(data, board.id, selection.conductor, endpoint)) {
+      const message = t('Ez a kapocs nem ehhez az elosztóhoz vagy vezetőhöz tartozik. Válassz megfelelő kapcsot.');
+      setError(message); onNotify(message); return false;
+    }
+    const next = assignFloorRouteTerminal(data, selection.sheetId, selection.routeId, board.id, selection.conductor, endpoint);
+    if (next === data) {
+      const message = t('A nyomvonal vagy a kapocs megváltozott. Válaszd ki újra a végpontokat.');
+      setError(message); onNotify(message); return false;
+    }
+    onChange(next); setFloorConnector(undefined); setFromValue(''); setToValue(''); setError('');
+    onNotify(t('Az alaprajzi vezető a kiválasztott kapocshoz került.'));
+    return true;
+  };
+  const selectFloorConnector = (sheetId: string, routeId: string, conductor: Conductor) => {
+    const selection = { sheetId, routeId, conductor };
+    if (floorConnector?.sheetId === sheetId && floorConnector.routeId === routeId && floorConnector.conductor === conductor) {
+      setFloorConnector(undefined); setError(''); return;
+    }
+    const first = !toValue ? parseEndpoint(fromValue) : undefined;
+    setWireId(undefined); onSelect(null); setError('');
+    if (first && connectFloorEndpoint(selection, first)) return;
+    setFromValue(''); setToValue(''); setFloorConnector(selection);
+  };
   const selectEndpoint = (endpoint: WiringEndpoint) => {
     onSelect(null);
     setError('');
+    if (floorConnector) { connectFloorEndpoint(floorConnector, endpoint); return; }
     if (!fromValue || (toValue && !continuousWiring)) {
       setFromValue(encodeEndpoint(endpoint));
       setToValue('');
@@ -187,6 +222,10 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
           <p className="subtle">
             {t('A készülékeket a fogantyújukkal mozgasd. A kapcsokra kattintva vezetékeket hozhatsz létre.')}
           </p>
+          {floorConnector && <p className="field-note" role="status">
+            {t('Kiválasztott alaprajzi vezető: {conductor}. Kattints az elosztó megfelelő kapcsára.', { conductor: floorConnector.conductor })}
+            {' '}<button type="button" className="quiet" onClick={() => { setFloorConnector(undefined); setError(''); }}>{t('Mégse')}</button>
+          </p>}
           <div className="row-actions wiring-grid-control">
             <button type="button" className="quiet wiring-mode-toggle" aria-pressed={snapToGrid} onClick={() => setSnapToGrid(value => !value)}>{t('Rácshoz illesztés')}</button>
             {snapToGrid && <span className="subtle">{t('Húzáskor a töréspontok a rácshoz illeszkednek; a vezeték derékszögű marad.')}</span>}
@@ -207,6 +246,8 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
             onPlaceDevice={onPlaceDevice}
             onNotify={onNotify}
             onReconnectEndpoint={(id, side, endpoint) => patchWire(id, { [side]: endpoint })}
+            selectedFloorConnector={floorConnector}
+            onSelectFloorConnector={selectFloorConnector}
           />
           {selectedWire && selectedRoute.length >= 2 && (
             <div className="wiring-floating-tools">

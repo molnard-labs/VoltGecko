@@ -1,4 +1,12 @@
 const translations: Record<string, string> = {
+  'A(z) {circuit} áramkörhöz több védelmi készülék kapcsolódik. Válaszd ki a megfelelőt.': 'Multiple protective devices are associated with circuit {circuit}. Choose the appropriate device.',
+  'A(z) {circuit} áramkörhöz másik védelmi készülék van megadva: {device}.': 'Circuit {circuit} already has another protective device: {device}.',
+  'Védelmi készülék: {device}': 'Protective device: {device}',
+  '{conductor} · {route}: alaprajzi végpont': '{conductor} · {route}: floor-plan endpoint',
+  'Ez a kapocs nem ehhez az elosztóhoz vagy vezetőhöz tartozik. Válassz megfelelő kapcsot.': 'This terminal does not belong to this board or conductor. Choose a compatible terminal.',
+  'A nyomvonal vagy a kapocs megváltozott. Válaszd ki újra a végpontokat.': 'The route or terminal has changed. Select the endpoints again.',
+  'Az alaprajzi vezető a kiválasztott kapocshoz került.': 'The floor-plan conductor has been connected to the selected terminal.',
+  'Kiválasztott alaprajzi vezető: {conductor}. Kattints az elosztó megfelelő kapcsára.': 'Selected floor-plan conductor: {conductor}. Click a compatible terminal on the board.',
   'Új áramkört az Áramkörök oldalon hozhatsz létre.': 'Create a circuit on the Circuits page.',
   'Alaprajzi nyomvonal': 'Floor-plan route',
   'Nincs kapocs hozzárendelve': 'No terminal assigned',
