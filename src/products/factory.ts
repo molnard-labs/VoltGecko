@@ -45,6 +45,49 @@ function verified(product: CatalogProduct): boolean {
   } catch { return false; }
 }
 
+/** Match electrical function, rather than simply accepting any wall-mounted product.
+ * An IP44 socket is still a single socket, and the indicator on a push button
+ * does not change its switching function. Neither changes the plan symbol. */
+export function canAssignFloorProduct(device: Device, product: CatalogProduct): boolean {
+  if (product.mounting !== 'floor' || product.category === 'floor-accessory' || device.kind !== product.kind) return false;
+
+  // A generic custom symbol carries no information that can distinguish a USB
+  // charger, a speaker outlet or a cable outlet. Do not assert compatibility.
+  if (device.kind === 'custom' && !device.variant) return false;
+
+  // The standard data outlet is explicitly RJ45; the catalogue also uses
+  // custom-data for HDMI and fibre outlets, which are different connections.
+  if (device.kind === 'custom' && device.variant === 'custom-data' && !/rj\s*45/i.test(product.name.hu)) return false;
+  // A satellite-only socket is not a TV socket, although both use the generic
+  // catalogue icon. Combined TV/SAT sockets do provide the TV connection.
+  if (device.kind === 'custom' && device.variant === 'custom-tv' && !/\btv\b/i.test(product.name.hu)) return false;
+
+  // The current catalogue has no dedicated variants for these functions;
+  // their generic switch/push-button classifications cannot prove a match.
+  if (product.kind === 'switch') {
+    const name = product.name.hu.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (name.includes('redony') || name.includes('harmas kapcsol') || name.includes('kartyas kapcsol') || name.includes('kettos nyomo')) return false;
+  }
+
+  if (device.variant === product.variant) return true;
+  if (device.kind === 'outlet') {
+    const singleSocket = (variant: Device['variant']) => variant === undefined || variant === 'outlet-weatherproof';
+    return singleSocket(device.variant) && singleSocket(product.variant);
+  }
+  if (device.kind === 'switch') {
+    const pushButton = (variant: Device['variant']) => variant === 'switch-push-button' || variant === 'switch-push-button-lit';
+    return pushButton(device.variant) && pushButton(product.variant);
+  }
+  return false;
+}
+
+/** Assign the manufacturer snapshot without altering the existing plan or its electrical data. */
+export function assignFloorProduct(device: Device, product: CatalogProduct): Device {
+  if (!verified(product)) throw new Error(t('A termék gyártói forrása nincs ellenőrizve.'));
+  if (!canAssignFloorProduct(device, product)) throw new Error(t('A termék nem felel meg a kijelölt eszköz típusának.'));
+  return { ...device, model: `${product.manufacturer} ${product.reference}`, product: snapshot(product) };
+}
+
 export function createDeviceFromProduct(product: CatalogProduct, devices: Device[], boardId?: string): Device {
   if (!verified(product)) throw new Error(t('A termék gyártói forrása nincs ellenőrizve.'));
   if (product.mounting === 'enclosure') throw new Error(t('Az elosztóházat új elosztóként kell hozzáadni.'));

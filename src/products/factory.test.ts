@@ -4,7 +4,7 @@ import { decodeProject, encodeProject, validateProject } from '../data/archive';
 import { checkpoint, createProject, restoreRevision } from '../data/project';
 import { getBoardIssues } from '../data/boardPlacement';
 import { setLanguage } from '../i18n';
-import { addFloorProductToProject, addProductToProject, createDeviceFromProduct } from './factory';
+import { addFloorProductToProject, addProductToProject, assignFloorProduct, canAssignFloorProduct, createDeviceFromProduct } from './factory';
 import type { CatalogProduct } from './types';
 
 // Deliberately fictional references: these tests exercise behavior, not manufacturer facts.
@@ -46,6 +46,72 @@ describe('manufacturer product snapshots', () => {
     expect(() => createDeviceFromProduct(fixture({ verifiedAt: '' }), [])).toThrow('forrása');
     expect(() => createDeviceFromProduct(fixture({ sourceUrl: 'javascript:alert(1)' }), [])).toThrow('forrása');
     expect(() => createDeviceFromProduct(fixture({ supplementalSourceUrl: 'javascript:alert(1)' }), [])).toThrow('forrása');
+  });
+});
+
+describe('assigning a product to an existing floor device', () => {
+  const product = (overrides: Partial<CatalogProduct> = {}) => fixture({
+    reference: 'TEST-106', category: 'floor-switch', mounting: 'floor', kind: 'switch',
+    variant: 'switch-two-way', moduleWidth: undefined, ...overrides,
+  });
+
+  it('updates only manufacturer data, preserves the original and archives the selection', async () => {
+    const doc = createProject();
+    const device = makeDevice('switch', [], 'switch-two-way');
+    Object.assign(device, { name: 'Kitchen', room: 'Kitchen', notes: 'Do not move', circuitId: 'c1', model: 'Old model', rating: 'Custom rating', heightMm: 1234, status: 'installed' });
+    doc.data.devices.push(device);
+    doc.data.circuits.push({ id: 'c1', code: 'C1', name: 'Kitchen', color: '#123456', notes: '' });
+    doc.data.sheets[0].placements.push({ deviceId: device.id, x: 12, y: 34, rotation: 90 });
+    const before = structuredClone(doc.data);
+    const chosen = product();
+    const updated = assignFloorProduct(device, chosen);
+    expect(device).toEqual(before.devices[0]);
+    expect(updated).toEqual({ ...device, model: 'Test manufacturer TEST-106', product: expect.objectContaining({ reference: 'TEST-106', mounting: 'floor' }) });
+    chosen.description.hu = 'Changed after selection';
+    expect(updated.product?.description?.hu).toBe('Tesztadat');
+    doc.data.devices[0] = updated;
+    const saved = await decodeProject(await encodeProject(doc));
+    expect(saved.data.sheets).toEqual(before.sheets);
+    expect(saved.data.circuits).toEqual(before.circuits);
+    expect(saved.data.devices[0]).toEqual(updated);
+  });
+
+  it('rejects incompatible devices, functions, accessories and unverified sources', () => {
+    const twoWay = makeDevice('switch', [], 'switch-two-way');
+    expect(canAssignFloorProduct(twoWay, product())).toBe(true);
+    expect(canAssignFloorProduct(twoWay, product({ variant: undefined }))).toBe(false);
+    expect(canAssignFloorProduct(twoWay, product({ variant: 'switch-intermediate' }))).toBe(false);
+    expect(canAssignFloorProduct(makeDevice('outlet', []), product())).toBe(false);
+    expect(canAssignFloorProduct(twoWay, product({ category: 'floor-accessory' }))).toBe(false);
+    expect(canAssignFloorProduct(twoWay, product({ mounting: 'din' }))).toBe(false);
+    expect(() => assignFloorProduct(twoWay, product({ variant: undefined }))).toThrow('nem felel meg');
+    expect(() => assignFloorProduct(twoWay, product({ sourceUrl: 'javascript:invalid' }))).toThrow('forrása');
+  });
+
+  it('matches single sockets and push buttons across non-topological options, but not different functions', () => {
+    const socket = makeDevice('outlet', []);
+    const weatherproof = product({ kind: 'outlet', category: 'floor-outlet', variant: 'outlet-weatherproof' });
+    expect(canAssignFloorProduct(socket, weatherproof)).toBe(true);
+    expect(canAssignFloorProduct(makeDevice('outlet', [], 'outlet-weatherproof'), { ...weatherproof, variant: undefined })).toBe(true);
+    expect(canAssignFloorProduct(socket, { ...weatherproof, variant: 'outlet-double' })).toBe(false);
+    const button = makeDevice('switch', [], 'switch-push-button');
+    expect(canAssignFloorProduct(button, product({ variant: 'switch-push-button-lit' }))).toBe(true);
+    expect(canAssignFloorProduct(button, product({ variant: 'switch-push-button', name: { hu: 'Kettős nyomó', en: 'Double push button' } }))).toBe(false);
+    expect(canAssignFloorProduct(button, product({ variant: 'switch-push-button', name: { hu: 'Redőnynyomó', en: 'Shutter button' } }))).toBe(false);
+    const standardSwitch = makeDevice('switch', []);
+    for (const name of ['Hármas kapcsoló', 'Kártyás kapcsoló', 'Redőnykapcsoló']) {
+      expect(canAssignFloorProduct(standardSwitch, product({ variant: undefined, name: { hu: name, en: name } }))).toBe(false);
+    }
+    expect(canAssignFloorProduct(makeDevice('custom', []), product({ kind: 'custom', category: 'floor-data', variant: undefined }))).toBe(false);
+    const data = makeDevice('custom', [], 'custom-data');
+    const dataProduct = product({ kind: 'custom', category: 'floor-data', variant: 'custom-data', name: { hu: 'RJ45 aljzat', en: 'RJ45 socket' } });
+    expect(canAssignFloorProduct(data, dataProduct)).toBe(true);
+    expect(canAssignFloorProduct(data, { ...dataProduct, name: { hu: 'HDMI aljzat', en: 'HDMI socket' } })).toBe(false);
+    expect(canAssignFloorProduct(data, { ...dataProduct, name: { hu: 'Optikai csatlakozó', en: 'Optical connection' } })).toBe(false);
+    const tv = makeDevice('custom', [], 'custom-tv');
+    const tvProduct = product({ kind: 'custom', category: 'floor-data', variant: 'custom-tv', name: { hu: 'TV/SAT aljzat', en: 'TV/SAT socket' } });
+    expect(canAssignFloorProduct(tv, tvProduct)).toBe(true);
+    expect(canAssignFloorProduct(tv, { ...tvProduct, name: { hu: 'SAT aljzat', en: 'SAT socket' } })).toBe(false);
   });
 });
 

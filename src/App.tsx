@@ -30,7 +30,7 @@ import { StartScreen, NewProjectForm } from './components/StartScreen';
 import { LinkedFileControl, type LinkedFileActions } from './components/LinkedFileControl';
 import { projectFilePicker } from './services/linkedFile';
 import { downloadBlob, safeFilename } from './services/files';
-import { addFloorProductToProject, addProductToProject } from './products/factory';
+import { addFloorProductToProject, addProductToProject, assignFloorProduct } from './products/factory';
 import type { CatalogProduct } from './products/types';
 import { useProjectDocument } from './app/useProjectDocument';
 import { useFocusTrap } from './app/useFocusTrap';
@@ -71,6 +71,7 @@ export default function App() {
   const [sheetMenuOpen, setSheetMenuOpen] = useState(false);
   const [boardId, setBoardId] = useState('');
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
+  const [assignmentTarget, setAssignmentTarget] = useState<{ projectId: string; deviceId: string } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newCircuitId, setNewCircuitId] = useState<string>();
   const [floorContextHost, setFloorContextHost] = useState<HTMLDivElement | null>(null);
@@ -127,6 +128,8 @@ export default function App() {
     setSelectedId(null);
     setTool('select');
     setFloorProduct(undefined);
+    setAssignmentTarget(null);
+    setProductLibraryOpen(false);
     setModal(null);
     setSidebar(false);
   };
@@ -192,6 +195,7 @@ export default function App() {
       if (e.key === 'Escape') {
         setModal(null);
         setProductLibraryOpen(false);
+        setAssignmentTarget(null);
         setSidebar(false);
         setTool('select');
         setFloorProduct(undefined);
@@ -231,6 +235,7 @@ export default function App() {
     setModal(null);
     setSidebar(false);
     setProductLibraryOpen(false);
+    setAssignmentTarget(null);
     setSelectedId(null);
     activateDocument(null);
   };
@@ -282,6 +287,21 @@ export default function App() {
   const addManufacturerProduct = (product: CatalogProduct) => {
     const current = docRef.current;
     if (!current) return;
+    if (assignmentTarget) {
+      const target = current.data.id === assignmentTarget.projectId && current.data.devices.find(item => item.id === assignmentTarget.deviceId);
+      if (!target || !current.data.sheets.some(sheet => sheet.placements.some(placement => placement.deviceId === target.id))) {
+        notify(t('A kiválasztott eszköz már nem található az alaprajzon.'));
+        return;
+      }
+      try {
+        const updated = assignFloorProduct(target, product);
+        changeData({ ...current.data, devices: current.data.devices.map(item => item.id === target.id ? updated : item) });
+        setProductLibraryOpen(false);
+        setAssignmentTarget(null);
+        notify(t('A termék hozzárendelve az eszközhöz.'));
+      } catch (error) { notify(errorMessage(error)); }
+      return;
+    }
     if (product.mounting === 'floor') {
       if (product.category === 'floor-accessory') return;
       setCatalogEntry(undefined);
@@ -451,6 +471,8 @@ export default function App() {
   const data = doc?.data;
   const sheet = data?.sheets.find((s) => s.id === sheetId) ?? data?.sheets[0];
   const device = data?.devices.find((d) => d.id === selectedId) ?? null;
+  const assignmentDevice = assignmentTarget && data && assignmentTarget.projectId === data.id
+    ? data.devices.find(item => item.id === assignmentTarget.deviceId) : undefined;
   let standaloneDraft: string | null = null;
   try { standaloneDraft = localStorage.getItem('eloszto-tervezo-v2'); } catch { /* Storage may be unavailable. */ }
   const nav = getNavigation();
@@ -493,6 +515,7 @@ export default function App() {
               void perform(t('Projekt megnyitása…'), refreshProjects);
             }}
             onProductsOpen={() => {
+              setAssignmentTarget(null);
               setProductLibraryOpen(true);
               setSidebar(false);
             }}
@@ -563,6 +586,7 @@ export default function App() {
                     aria-label={t('Gyártói terméktár')}
                     onClick={(event) => {
                       event.currentTarget.focus();
+                      setAssignmentTarget(null);
                       setProductLibraryOpen(true);
                     }}
                   >
@@ -820,6 +844,7 @@ export default function App() {
               onPhoto={addPhoto}
               onPlanImage={addPlanImage}
               onLocate={locate}
+              onChooseProduct={(id) => { setAssignmentTarget({projectId:data.id,deviceId:id}); setProductLibraryOpen(true); }}
             />
           </LazyFeature>
         </div>
@@ -862,8 +887,8 @@ export default function App() {
         </div>
       )}
       {productLibraryOpen && (
-        <LazyFeature onClose={() => setProductLibraryOpen(false)}>
-          <ManufacturerLibrary onAdd={addManufacturerProduct} onClose={() => setProductLibraryOpen(false)} />
+        <LazyFeature onClose={() => { setProductLibraryOpen(false); setAssignmentTarget(null); }}>
+          <ManufacturerLibrary onAdd={addManufacturerProduct} assignment={!!assignmentTarget} assignmentDevice={assignmentDevice} onClose={() => { setProductLibraryOpen(false); setAssignmentTarget(null); }} />
         </LazyFeature>
       )}
       {modal && (

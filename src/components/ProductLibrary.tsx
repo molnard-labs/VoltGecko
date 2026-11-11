@@ -7,6 +7,7 @@ interface Props {
   products: CatalogProduct[];
   onAdd: (product: CatalogProduct) => void;
   onClose: () => void;
+  assignment?: boolean;
 }
 
 const PAGE_SIZE = 40;
@@ -32,7 +33,7 @@ function verifiedDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(getLocale(), { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
-function ProductCard({ product, onAdd, language }: { product: CatalogProduct; onAdd: Props['onAdd']; language: 'hu' | 'en' }) {
+function ProductCard({ product, onAdd, language, assignment }: { product: CatalogProduct; onAdd: Props['onAdd']; language: 'hu' | 'en'; assignment?: boolean }) {
   const source = officialSource(product.sourceUrl);
   const supplementarySource = product.supplementalSourceUrl ? officialSource(product.supplementalSourceUrl) : undefined;
   const specs: Array<[string, string]> = [];
@@ -62,11 +63,11 @@ function ProductCard({ product, onAdd, language }: { product: CatalogProduct; on
     </div>
     {product.category === 'floor-accessory'
       ? <small>{t('Önállóan nem helyezhető el az alaprajzon.')}</small>
-      : <button type="button" className="primary product-add" onClick={() => onAdd(product)} aria-label={`${t(actionLabel(product))}: ${product.reference}`}><Plus size={15} aria-hidden="true"/>{t(actionLabel(product))}</button>}
+      : <button type="button" className="primary product-add" onClick={() => onAdd(product)} aria-label={`${t(assignment ? 'Hozzárendelés az eszközhöz' : actionLabel(product))}: ${product.reference}`}><Plus size={15} aria-hidden="true"/>{t(assignment ? 'Hozzárendelés az eszközhöz' : actionLabel(product))}</button>}
   </article>;
 }
 
-export function ProductLibrary({ products, onAdd, onClose }: Props) {
+export function ProductLibrary({ products, onAdd, onClose, assignment }: Props) {
   const { language } = useLanguage();
   const titleId = useId(), descriptionId = useId();
   const dialogRef = useRef<HTMLElement>(null), searchRef = useRef<HTMLInputElement>(null);
@@ -117,7 +118,7 @@ export function ProductLibrary({ products, onAdd, onClose }: Props) {
 
   return <div className="product-library-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="product-library" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
-      <header className="product-library-heading"><div><span className="eyebrow">{manufacturers || t('GYÁRTÓI KATALÓGUS')}</span><h2 id={titleId}>{t('Gyártói termékkönyvtár')}</h2><p id={descriptionId}>{ranges || t('Offline elérhető, gyártói adatokkal.')}</p></div><button type="button" className="icon-button" aria-label={t('Termékkönyvtár bezárása')} onClick={onClose}><X size={21}/></button></header>
+      <header className="product-library-heading"><div><span className="eyebrow">{manufacturers || t('GYÁRTÓI KATALÓGUS')}</span><h2 id={titleId}>{t('Gyártói termékkönyvtár')}</h2><p id={descriptionId}>{assignment ? t('A kiválasztott eszköznek megfelelő termékek.') : ranges || t('Offline elérhető, gyártói adatokkal.')}</p></div><button type="button" className="icon-button" aria-label={t('Termékkönyvtár bezárása')} onClick={onClose}><X size={21}/></button></header>
       <div className="product-library-controls">
         <label className="product-search"><span>{t('Termék keresése')}</span><div><Search size={17} aria-hidden="true"/><input ref={searchRef} value={query} type="search" onChange={event => setQuery(event.target.value)} placeholder={t('Cikkszám, név vagy műszaki adat…')}/></div></label>
         <div className="product-filters">
@@ -128,7 +129,7 @@ export function ProductLibrary({ products, onAdd, onClose }: Props) {
         <div className="product-results-heading"><p aria-live="polite" role="status">{t('{count} termék', { count: number(matching.length) })}{hasFilters && <span> / {number(products.length)}</span>}</p>{hasFilters && <button type="button" className="product-clear" onClick={reset}>{t('Szűrők törlése')}</button>}</div>
       </div>
       <div className="product-library-results">
-        {matching.length > 0 ? <><div className="product-grid">{matching.slice(0, visibleCount).map(product => <ProductCard key={`${product.manufacturer}-${product.reference}`} product={product} onAdd={onAdd} language={language}/>)}</div>{matching.length > visibleCount && <div className="product-more"><p>{t('{shown} / {total} termék megjelenítve', { shown: number(Math.min(visibleCount, matching.length)), total: number(matching.length) })}</p><button type="button" className="quiet" onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>{t('További {count} termék', { count: Math.min(PAGE_SIZE, matching.length - visibleCount) })}</button></div>}</> : <div className="product-empty"><Package size={34} aria-hidden="true"/><h3>{t('Nincs találat')}</h3><p>{t('Próbálj másik cikkszámot vagy módosítsd a szűrőket.')}</p>{hasFilters && <button type="button" className="quiet" onClick={reset}>{t('Szűrők törlése')}</button>}</div>}
+        {matching.length > 0 ? <><div className="product-grid">{matching.slice(0, visibleCount).map(product => <ProductCard key={`${product.manufacturer}-${product.reference}`} product={product} onAdd={onAdd} language={language} assignment={assignment}/>)}</div>{matching.length > visibleCount && <div className="product-more"><p>{t('{shown} / {total} termék megjelenítve', { shown: number(Math.min(visibleCount, matching.length)), total: number(matching.length) })}</p><button type="button" className="quiet" onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>{t('További {count} termék', { count: Math.min(PAGE_SIZE, matching.length - visibleCount) })}</button></div>}</> : <div className="product-empty"><Package size={34} aria-hidden="true"/><h3>{t('Nincs találat')}</h3><p>{t('Próbálj másik cikkszámot vagy módosítsd a szűrőket.')}</p>{hasFilters && <button type="button" className="quiet" onClick={reset}>{t('Szűrők törlése')}</button>}</div>}
       </div>
       <footer className="product-library-footer"><Package size={14} aria-hidden="true"/><span>{t('A termékadatok offline is elérhetők. A forráslinkekhez internetkapcsolat szükséges.')}</span></footer>
     </section>
