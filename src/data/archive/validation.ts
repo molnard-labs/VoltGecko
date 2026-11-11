@@ -125,7 +125,7 @@ function electrical(value: unknown) {
     )
   )
     fail('ismeretlen villamos készülékszerep.');
-  if (value.phase !== undefined && !['L1', 'L2', 'L3'].includes(value.phase as string)) fail('ismeretlen fázis.');
+  if (value.phase !== undefined && !['L', 'L1', 'L2', 'L3'].includes(value.phase as string)) fail('ismeretlen fázis.');
   for (const key of ['currentA', 'residualCurrentMa'])
     if (value[key] !== undefined) positive(value[key], 'Villamos adatok', 1_000_000);
   for (const key of ['curve', 'residualType', 'spdClass', 'group'])
@@ -357,7 +357,7 @@ function validateData(value: unknown, assets: ReadonlyMap<string, Asset>, projec
     }
     if (entry.loadType !== undefined && !['socket', 'lamp', 'motor', 'other'].includes(entry.loadType as string))
       fail('ismeretlen fogyasztótípus.');
-    if (entry.phase !== undefined && !['L1', 'L2', 'L3'].includes(entry.phase as string)) fail('ismeretlen fázis.');
+    if (entry.phase !== undefined && !['L', 'L1', 'L2', 'L3'].includes(entry.phase as string)) fail('ismeretlen fázis.');
     cableDetails(entry.cableDetails);
   }
   for (const sheet of value.sheets) {

@@ -111,4 +111,23 @@ describe('service language boundaries', () => {
     expect(schedule).toContain('Főelosztó');
     expect(schedule).toContain('Műhely elosztó');
   });
+
+  it('uses current device circuit assignments in the PDF connection schedule', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }));
+    const doc = createProject('Projekt');
+    const device = makeDevice('outlet', []);
+    device.circuitId = 'new';
+    doc.data.devices.push(device);
+    doc.data.circuits = [
+      { id:'old', code:'OLD', name:'Old', color:'#888888', notes:'' },
+      { id:'new', code:'NEW', name:'New', color:'#ff0000', notes:'' },
+    ];
+    const sheet = doc.data.sheets[0];
+    sheet.boardPlacements = [{ boardId:doc.data.boards[0].id, x:200, y:100 }];
+    sheet.routes = [{ id:'r', fromDeviceId:device.id, toBoardId:doc.data.boards[0].id, circuitId:'old', kind:'power', points:[] }];
+    await buildPdf(doc, 'professional');
+    const schedule = pdfCalls.text.slice(pdfCalls.text.indexOf('Kapcsolatjegyzék'));
+    expect(schedule).toContain('NEW');
+    expect(schedule).not.toContain('OLD');
+  });
 });

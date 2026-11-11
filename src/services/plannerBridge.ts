@@ -20,7 +20,7 @@ export function isBoardPlannerSnapshot(value: unknown): value is BoardPlannerSna
 }
 
 const loads = new Set(['socket', 'lamp', 'motor', 'other']);
-const phases = new Set(['L1', 'L2', 'L3']);
+const phases = new Set(['L', 'L1', 'L2', 'L3']);
 const stringField = (v: unknown, limit: number) => typeof v === 'string' ? v.slice(0, limit) : '';
 const powerValue = (v: unknown) => {
   if (v === '' || v === undefined || v === null) return undefined;

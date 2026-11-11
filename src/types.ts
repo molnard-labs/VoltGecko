@@ -29,7 +29,7 @@ export interface BoardRow { id: string; name: string; capacity: number; placemen
 export interface BoardConnection { id:string; fromDeviceId?:string; toDeviceId:string }
 export interface Board { id: string; name: string; rows: BoardRow[]; product?:ProductSnapshot; connections?:BoardConnection[]; supplyLabel?:string; wiring?:BoardWiring }
 
-export type Phase = 'L1'|'L2'|'L3';
+export type Phase = 'L'|'L1'|'L2'|'L3';
 export type Conductor = 'L'|'L1'|'L2'|'L3'|'N'|'PE'|'PEN';
 /** Structured electrical data supplements existing names, ratings and product snapshots. */
 export interface DeviceElectrical {

@@ -4,6 +4,7 @@ import { t, getLocale } from '../i18n';
 import { uid, makeDevice } from '../catalog';
 import { placeBoardDevice } from '../data/boardPlacement';
 import { defaultWireColor } from '../data/wireColors';
+import { loadPhases } from '../data/projectPhases';
 import {
   assignConnectedPhase,
   endpointConductor,
@@ -333,7 +334,7 @@ export function BoardWiringEditor({ data, board, selectedId, onChange, onNotify,
               })}
             </p>
             <div>
-              {(['L1', 'L2', 'L3'] as const).map((phase) => (
+              {loadPhases(data, loads).map((phase) => (
                 <span key={phase}>
                   {phase} <strong>{loads[phase].toLocaleString(getLocale(), { maximumFractionDigits: 0 })} W</strong>
                 </span>

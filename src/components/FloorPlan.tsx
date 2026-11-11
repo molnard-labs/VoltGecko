@@ -18,9 +18,11 @@ import type { Asset, DeviceKind, PlanSheet, Point, ProjectData, Route } from '..
 import { kindLabel, uid } from '../catalog';
 import { moveSheetBoard, moveSheetDevice } from '../data/floorPlan';
 import { floorRoutePoints } from '../data/floorRoute';
+import { floorRouteCircuitId } from '../data/floorRouteCircuit';
 import { isEmptyPlanSheet } from '../data/planBackground';
 import { getFloorPlanDisplay, getPlanAppearance, getPlanSheetBounds } from '../data/planAppearance';
 import { PlanDeviceGraphic } from './PlanDeviceGraphic';
+import { BoardMarkerGraphic } from './BoardMarkerGraphic';
 import './floor-board.css';
 import { insertWireBend, moveWireBend, moveWireSegment, orthogonalRoute, removeWireBend } from './board-wiring/wireEditing';
 import './floor-route-edit.css';
@@ -89,7 +91,7 @@ export function FloorPlan({
   const [draftSheet, setDraftSheet] = useState<PlanSheet | null>(null);
   const draftRef = useRef<PlanSheet | null>(null);
   const sheet = draftSheet?.id === sheetId ? draftSheet : persistedSheet;
-  const fit = (): View => sheet ? getPlanSheetBounds(sheet, data.devices, assets, display)
+  const fit = (): View => sheet ? getPlanSheetBounds(sheet, data.devices, assets, display, data.boards)
     : { x: -48, y: -48, width: 1296, height: 896 };
   const [view, setView] = useState<View>(fit);
   const [layersOpen, setLayersOpen] = useState(false);
@@ -161,6 +163,7 @@ export function FloorPlan({
   const background = sheet.backgroundAssetId ? assets[sheet.backgroundAssetId] : undefined;
   const selectedPlacement = sheet.placements.find((p) => p.deviceId === selectedId);
   const selectedDevice = selectedId ? devices.get(selectedId) : undefined;
+  const selectedCircuit = selectedDevice?.circuitId ? circuits.get(selectedDevice.circuitId) : undefined;
   const selectedRoute = sheet.routes.find((r) => r.id === selectedRouteId);
   const selectedRoutePoints = selectedRoute ? floorRoutePoints(selectedRoute, sheet) : [];
   const selectedBendIndex = (() => {
@@ -731,7 +734,9 @@ export function FloorPlan({
         {layers.routes &&
           sheet.routes.map((route) => {
             const selected = route.id === selectedRouteId;
-            const color = colorFor(route.fromDeviceId, route.circuitId);
+            const routeCircuitId = floorRouteCircuitId(route, devices);
+            const color = circuits.get(routeCircuitId ?? '')?.color ?? '#28775b';
+            const circuitHighlighted = !!selectedCircuit && routeCircuitId === selectedCircuit.id;
             const routePoints = floorRoutePoints(route, sheet);
             const editablePoints = orthogonalRoute(routePoints);
             return (
@@ -774,7 +779,7 @@ export function FloorPlan({
                   setSelectedRouteId(route.id);
                   setSelectedBend({ routeId:route.id, index, point });
                 }}
-                className="floor-route"
+                className={`floor-route${circuitHighlighted ? ' floor-route-circuit-highlighted' : ''}`}
               >
                 <polyline
                   points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -782,12 +787,18 @@ export function FloorPlan({
                   stroke="transparent"
                   strokeWidth="18"
                 />
+                {circuitHighlighted && <>
+                  <polyline points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill="none" stroke="#23312b" strokeWidth="10" strokeLinejoin="round" pointerEvents="none" />
+                  <polyline points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill="none" stroke="white" strokeWidth="7" strokeLinejoin="round" pointerEvents="none" />
+                </>}
                 <polyline
                   points={routePoints.map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke={color}
-                  strokeWidth={selected ? 3 : 2}
-                  opacity={selected ? 1 : 0.75}
+                  strokeWidth={circuitHighlighted ? 4 : selected ? 3 : 2}
+                  opacity={selected || circuitHighlighted ? 1 : 0.75}
                   strokeDasharray={route.kind === 'control' ? '7 5' : undefined}
                   strokeLinejoin="round"
                   pointerEvents="none"
@@ -908,9 +919,7 @@ export function FloorPlan({
               startDrag(e, 'board', board.id, placement);
             }}>
             <title>{boardLabel}</title>
-            <rect x={-18} y={-22} width={36} height={44} rx={3} fill="#f2faf5" stroke="#28775b" strokeWidth={fromEndpoint?.kind === 'board' && fromEndpoint.id === board.id ? 4 : 2}/>
-            <path d="M-11 -10H11 M-11 0H11 M-11 10H11" fill="none" stroke="#28775b" strokeWidth={2}/>
-            <text x={0} y={38} textAnchor="middle" fontSize={11} fontWeight={600} fill="#344d40" stroke="white" strokeWidth={3} paintOrder="stroke" pointerEvents="none">{board.name}</text>
+            <BoardMarkerGraphic board={board} display={display} selected={fromEndpoint?.kind === 'board' && fromEndpoint.id === board.id} />
           </g>;
         })}
         {layers.devices &&
@@ -919,6 +928,7 @@ export function FloorPlan({
             if (!device) return null;
             const selected = device.id === selectedId;
             const connected = fromEndpoint?.kind === 'device' && device.id === fromEndpoint.id;
+            const circuitHighlighted = !!selectedCircuit && device.circuitId === selectedCircuit.id;
             const color = colorFor(device.id);
             const appearance = getPlanAppearance(device, assets, display);
             const radians = placement.rotation * Math.PI / 180;
@@ -928,7 +938,7 @@ export function FloorPlan({
               <g
                 key={device.id}
                 transform={`translate(${placement.x} ${placement.y})`}
-                className={`floor-device ${selected ? 'floor-device-selected' : ''}`}
+                className={`floor-device ${selected ? 'floor-device-selected' : ''}${circuitHighlighted ? ' floor-device-circuit-highlighted' : ''}`}
                 role="button"
                 aria-label={`${device.code}, ${device.name}`}
                 onClick={(e) => {
@@ -950,7 +960,12 @@ export function FloorPlan({
                   {device.room ? ` · ${device.room}` : ''}
                 </title>
                 <circle r={Math.max(12, halfExtent)} fill="transparent" pointerEvents="all" />
-                <PlanDeviceGraphic device={device} assets={assets} display={display} rotation={placement.rotation} color={color} highlighted={selected || connected} />
+                {circuitHighlighted && <>
+                  <circle r={halfExtent + 7} fill="none" stroke="#23312b" strokeWidth="10" pointerEvents="none" />
+                  <circle r={halfExtent + 7} fill="none" stroke="white" strokeWidth="7" pointerEvents="none" />
+                  <circle r={halfExtent + 7} fill="none" stroke={selectedCircuit.color} strokeWidth="4" pointerEvents="none" />
+                </>}
+                <PlanDeviceGraphic device={device} assets={assets} display={display} rotation={placement.rotation} color={color} highlighted={selected || connected || circuitHighlighted} />
                 {device.status === 'verified' && (
                   <circle cx={appearance.kind === 'symbol' ? 14 : halfExtent - 3} cy={appearance.kind === 'symbol' ? -13 : -halfExtent + 3} r="3.5" fill="#22a76e" stroke="white" strokeWidth="1.5" />
                 )}

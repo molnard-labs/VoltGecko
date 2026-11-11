@@ -14,6 +14,9 @@ import { getWiringIssues, wiringEndpointLabel, getPhaseLoads } from '../data/boa
 import { diagramTiles } from './diagramPages';
 import { getFloorPlanDisplay, getPlanAppearance } from '../data/planAppearance';
 import { floorRouteEndpoint, floorRoutePoints } from '../data/floorRoute';
+import { floorRouteCircuitId } from '../data/floorRouteCircuit';
+import { boardImage } from '../products/boardImage';
+import { loadPhases } from '../data/projectPhases';
 
 type Audience = 'client' | 'professional';
 const PAGE_W = 420, PAGE_H = 297, MARGIN = 18, WIDTH = PAGE_W - 2 * MARGIN;
@@ -162,10 +165,19 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       return device ? [[device.id, getPlanAppearance(device, doc.assets, floorPlanDisplay)] as const] : [];
     }));
     const rasters = new Map<string, PlanRaster>();
+    const boardRasters = new Map<string, PlanRaster>();
     let minX = 0, minY = 0, maxX = sheet.width, maxY = sheet.height;
     for (const placement of sheet.boardPlacements ?? []) {
-      minX = Math.min(minX, placement.x - 18); minY = Math.min(minY, placement.y - 22);
-      maxX = Math.max(maxX, placement.x + 18); maxY = Math.max(maxY, placement.y + 38);
+      const board = doc.data.boards.find(item => item.id === placement.boardId);
+      const picture = board && floorPlanDisplay === 'images' ? boardImage(board) : undefined;
+      if (board && picture) {
+        try {
+          boardRasters.set(board.id, await deviceRaster({ id: `catalog:${board.product!.manufacturer}:${board.product!.reference}`, name: '', mime: 'image/webp', data: picture.src }, 0, 1));
+        } catch { /* A missing or corrupt catalogue image uses the usual board symbol. */ }
+      }
+      const pictured = board && boardRasters.has(board.id);
+      minX = Math.min(minX, placement.x - (pictured ? 40 : 18)); minY = Math.min(minY, placement.y - (pictured ? 40 : 22));
+      maxX = Math.max(maxX, placement.x + (pictured ? 40 : 18)); maxY = Math.max(maxY, placement.y + (pictured ? 54 : 38));
     }
     for (const placement of sheet.placements) {
       let appearance = appearances.get(placement.deviceId);
@@ -206,7 +218,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       const from = floorRouteEndpoint(route, 'from', sheet), to = floorRouteEndpoint(route, 'to', sheet);
       if (!from || !to) continue;
       const points = floorRoutePoints(route, sheet);
-      const circuit = route.circuitId ? circuitMap.get(route.circuitId) : undefined;
+      const circuit = circuitMap.get(floorRouteCircuitId(route, deviceMap) ?? '');
       pdf.setDrawColor(route.kind === 'control' ? '#9a60ba' : circuit?.color || TEAL);
       pdf.setLineWidth(route.kind === 'control' ? 0.45 : 0.65);
       pdf.setLineDashPattern(route.kind === 'control' ? [2, 1.3] : [], 0);
@@ -276,12 +288,17 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       const board = doc.data.boards.find(item => item.id === placement.boardId);
       if (!board) continue;
       const cx = px(placement.x), cy = py(placement.y);
-      const width = Math.max(4.2, Math.min(8, 36 * scale)), height = width * 44 / 36;
-      pdf.setFillColor('#f4faf6'); pdf.setDrawColor('#28775b'); pdf.setLineWidth(0.25);
-      pdf.rect(cx - width / 2, cy - height / 2, width, height, 'FD');
-      pdf.setLineWidth(0.2);
-      for (const offset of [-10, 0, 10])
-        pdf.line(cx - width * 11 / 36, cy + offset * width / 36, cx + width * 11 / 36, cy + offset * width / 36);
+      const raster = boardRasters.get(board.id);
+      const width = raster ? 80 * raster.widthRatio * scale : Math.max(4.2, Math.min(8, 36 * scale));
+      const height = raster ? 80 * raster.heightRatio * scale : width * 44 / 36;
+      if (raster) pdf.addImage(raster.data, 'PNG', cx - width / 2, cy - height / 2, width, height, undefined, 'FAST');
+      else {
+        pdf.setFillColor('#f4faf6'); pdf.setDrawColor('#28775b'); pdf.setLineWidth(0.25);
+        pdf.rect(cx - width / 2, cy - height / 2, width, height, 'FD');
+        pdf.setLineWidth(0.2);
+        for (const offset of [-10, 0, 10])
+          pdf.line(cx - width * 11 / 36, cy + offset * width / 36, cx + width * 11 / 36, cy + offset * width / 36);
+      }
       const label = shortText(pdf, board.name, 38, 7);
       pdf.setFontSize(7);
       text(label, cx - pdf.getTextWidth(label) / 2, cy + height / 2 + 3.2, 7, '#28775b');
@@ -414,7 +431,9 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
       if(board.wiring.buses.length)table(t('{board} · sínkiosztás',{board:board.name}),['Sín','Vezető','Kapcsok','Kapocskiosztás'],[70,35,30,249],board.wiring.buses.map(bus=>[bus.name,bus.conductor,String(bus.capacity),bus.terminalLabels.map((label,index)=>label?`${index+1}: ${label}`:'').filter(Boolean).join('\n')]));
       if(board.wiring.infeeds.length)table(t('{board} · betáplálások',{board:board.name}),['Megnevezés','Pólusok','Kábel / vezeték'],[100,80,204],board.wiring.infeeds.map(infeed=>[infeed.name,[infeed.poles.join(' / '),infeed.currentA !== undefined ? `${infeed.currentA} A` : ''].filter(Boolean).join(' · '),cableLabel(infeed.cable)]));
       const loads=getPhaseLoads(doc.data,board),factor=board.wiring.demandFactor??1;
-      table(t('{board} · fázisterhelés',{board:board.name}),['L1 (W)','L2 (W)','L3 (W)','Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[60,60,60,90,114],[[loads.L1,loads.L2,loads.L3,loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'));
+      const shownPhases = loadPhases(doc.data, loads);
+      const phaseWidth = 180 / shownPhases.length;
+      table(t('{board} · fázisterhelés',{board:board.name}),[...shownPhases.map(phase => `${phase} (W)`),'Nincs kiosztva (W)','Egyidejű teljesítmény (W)'],[...shownPhases.map(() => phaseWidth),90,114],[[...shownPhases.map(phase => loads[phase]),loads.unassignedW,loads.totalW*factor].map(value=>value.toLocaleString(locale,{maximumFractionDigits:1}))],t('A rögzített fogyasztói adatok összege; a tényező nem módosítja az egyedi áramköröket.'));
       const wiringIssues=getWiringIssues(doc.data,board);
       if(wiringIssues.length)table(t('Huzalozási jelzések'),['Jelzés'],[WIDTH],wiringIssues.map(issue=>[issue.message]));
     }
@@ -426,7 +445,7 @@ export async function buildPdf(doc: ProjectDocument, audience: Audience): Promis
     table(t('Áramkörjegyzék'), ['Áramkör', 'Megnevezés', 'Védelem', 'Hozzárendelt fogyasztók', 'Kábel', 'Telj. W', 'Megjegyzés'], [25, 65, 35, 74, 60, 25, 100], doc.data.circuits.map(circuit => [circuit.code, [circuit.name,circuit.loadType?t(loadLabels[circuit.loadType]):''].filter(Boolean).join('\n'), circuit.protectionDeviceId ? deviceMap.get(circuit.protectionDeviceId)?.code || '' : '', doc.data.devices.filter(device => device.circuitId === circuit.id).map(device => `${device.code} · ${device.name}`).join('\n'), circuitCableLabel(circuit),circuit.powerW===undefined?'':circuit.powerW.toLocaleString(locale),circuit.notes]));
     const routeEndName = (deviceId: string | undefined, boardId: string | undefined) =>
       deviceId ? deviceMap.get(deviceId)?.code || '' : boardId ? doc.data.boards.find(board => board.id === boardId)?.name || '' : '';
-    const routes = doc.data.sheets.flatMap(sheet => sheet.routes.map(route => [sheet.name, route.kind === 'control' ? t('Vezérlés') : t('Tápellátás'), routeEndName(route.fromDeviceId, route.fromBoardId), routeEndName(route.toDeviceId, route.toBoardId), route.circuitId ? circuitMap.get(route.circuitId)?.code || '' : '']));
+    const routes = doc.data.sheets.flatMap(sheet => sheet.routes.map(route => [sheet.name, route.kind === 'control' ? t('Vezérlés') : t('Tápellátás'), routeEndName(route.fromDeviceId, route.fromBoardId), routeEndName(route.toDeviceId, route.toBoardId), circuitMap.get(floorRouteCircuitId(route, deviceMap) ?? '')?.code || '']));
     table(t('Kapcsolatjegyzék'), ['Tervlap', 'Kapcsolat', 'Kiinduló pont', 'Célpont', 'Áramkör'], [90, 55, 90, 90, 59], routes);
   } else {
     table(t('Mi hova kerül?'), ['Azonosító', 'Eszköz', 'Helyiség', 'Áramkör', 'Állapot'], [43, 128, 70, 55, 88], doc.data.devices.map(device => [device.code, `${device.name} · ${deviceLabel(device)}`, device.room, device.circuitId ? circuitMap.get(device.circuitId)?.code || '' : '', t(statuses[device.status])]));

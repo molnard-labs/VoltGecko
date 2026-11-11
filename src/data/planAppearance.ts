@@ -1,4 +1,5 @@
-import type { Asset, Device, FloorPlanDisplay, PlanSheet, ProjectData } from '../types';
+import type { Asset, Board, Device, FloorPlanDisplay, PlanSheet, ProjectData } from '../types';
+import { boardImage } from '../products/boardImage';
 
 export const DEFAULT_PLAN_IMAGE_SIZE = 80;
 
@@ -40,6 +41,7 @@ export function getPlanSheetBounds(
   devices: readonly Device[],
   assets: Readonly<Record<string, Asset>>,
   display: FloorPlanDisplay,
+  boards: readonly Board[] = [],
 ): { x: number; y: number; width: number; height: number } {
   const padding = 48;
   if (display === 'symbols') {
@@ -57,6 +59,12 @@ export function getPlanSheetBounds(
     minY = Math.min(minY, placement.y - extent);
     maxX = Math.max(maxX, placement.x + extent);
     maxY = Math.max(maxY, placement.y + extent);
+  }
+  for (const placement of sheet.boardPlacements ?? []) {
+    const board = boards.find(item => item.id === placement.boardId);
+    if (!board || !boardImage(board)) continue;
+    minX = Math.min(minX, placement.x - 40); minY = Math.min(minY, placement.y - 40);
+    maxX = Math.max(maxX, placement.x + 40); maxY = Math.max(maxY, placement.y + 54);
   }
   return { x: minX - padding, y: minY - padding, width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
 }

@@ -4,6 +4,7 @@ import type { BoardWire, WiringEndpoint } from '../types';
 import { decodeProject, encodeProject } from './archive';
 import { balanceUnassignedPhases, effectiveDevicePoles, endpointConductor, estimateVoltageDrop, getPhaseLoads, getWiringIssues, wiringEndpointLabel } from './boardWiring';
 import { checkpoint, createProject, deleteDevice, restoreRevision } from './project';
+import { loadPhases, phaseOptions, projectPhases } from './projectPhases';
 
 const d = (deviceId: string, pole = 0, side: 'top' | 'bottom' = 'top'): WiringEndpoint => ({ kind: 'device', deviceId, pole, side });
 const b = (busId: string, terminal = 0): WiringEndpoint => ({ kind: 'bus', busId, terminal });
@@ -13,10 +14,35 @@ function fixture() {
   const doc = createProject('Detailed wiring');
   doc.data.devices = ['a', 'b', 'c'].map(id => ({ ...makeDevice('breaker', []), id, code: id.toUpperCase(), electrical: { poles: ['L', 'N'] } }));
   const board = doc.data.boards[0]; board.rows[0].placements = doc.data.devices.map((device, start) => ({ deviceId: device.id, start }));
-  board.wiring = { buses: [{ id: 'phase', name: 'Phase bus', conductor: 'L1', capacity: 12, position: 'bottom', terminalLabels: ['Input'] }, { id: 'earth', name: 'Earth bus', conductor: 'PE', capacity: 12, position: 'bottom', terminalLabels: [] }], infeeds: [{ id: 'supply', name: 'Supply', kind: 'supply', poles: ['L1', 'N'] }, { id: 'earth-electrode', name: 'Earth', kind: 'earth', poles: ['PE'] }], wires: [] };
+  board.wiring = { buses: [{ id: 'phase', name: 'Phase bus', conductor: 'L1', capacity: 12, position: 'bottom', terminalLabels: ['Input'] }, { id: 'earth', name: 'Earth bus', conductor: 'PE', capacity: 12, position: 'bottom', terminalLabels: [] }], infeeds: [{ id: 'supply', name: 'Supply', kind: 'supply', poles: ['L1', 'L2', 'L3', 'N'] }, { id: 'earth-electrode', name: 'Earth', kind: 'earth', poles: ['PE'] }], wires: [] };
   return { doc, board, wiring: board.wiring };
 }
 describe('detailed wiring documentation', () => {
+  it('uses the actual single-phase supply, preserves mismatched stored assignments and round-trips L', async () => {
+    const { doc, board, wiring } = fixture();
+    wiring.infeeds[0].poles = ['L', 'N', 'PE'];
+    doc.data.circuits = [
+      { id: 'single', code: '1', name: '', notes: '', color: '#123456', powerW: 600, phase: 'L', protectionDeviceId: 'a' },
+      { id: 'pending', code: '2', name: '', notes: '', color: '#123456', powerW: 400, protectionDeviceId: 'b' },
+      { id: 'historic', code: '3', name: '', notes: '', color: '#123456', powerW: 100, phase: 'L2', protectionDeviceId: 'c' }
+    ];
+    expect(projectPhases(doc.data)).toEqual(['L']);
+    expect(phaseOptions(doc.data, 'L2')).toEqual(['L', 'L2']);
+    const next = balanceUnassignedPhases(doc.data, board);
+    expect(next.circuits.map(circuit => circuit.phase)).toEqual(['L', 'L', 'L2']);
+    const loads = getPhaseLoads(next, next.boards[0]);
+    expect(loads).toMatchObject({ L: 1000, L1: 0, L2: 100, L3: 0, unassignedW: 0 });
+    expect(loadPhases(next, loads)).toEqual(['L', 'L2']);
+    const restored = await decodeProject(await encodeProject({ ...doc, data: next }));
+    expect(restored.data.circuits.map(circuit => circuit.phase)).toEqual(['L', 'L', 'L2']);
+  });
+  it('does not infer a supply topology when the incoming supply has not been defined', () => {
+    const { doc, wiring } = fixture();
+    wiring.infeeds = [];
+    expect(projectPhases(doc.data)).toEqual(['L', 'L1', 'L2', 'L3']);
+    wiring.infeeds = [{ id: 'three', name: 'Three-phase', kind: 'supply', poles: ['L1', 'L2', 'L3', 'N'] }];
+    expect(projectPhases(doc.data)).toEqual(['L1', 'L2', 'L3']);
+  });
   it('preserves the incoming supply rating in the project archive', async () => {
     const { doc, wiring } = fixture();
     wiring.infeeds[0].currentA = 16;
@@ -105,10 +131,10 @@ describe('detailed wiring documentation', () => {
       { id: 'large', code: '3', name: '', notes: '', color: '#123456', powerW: 500, protectionDeviceId: 'b' },
       { id: 'small', code: '4', name: '', notes: '', color: '#123456', powerW: 200, protectionDeviceId: 'b' },
     ];
-    expect(getPhaseLoads(doc.data, board)).toEqual({ L1: 900, L2: 300, L3: 300, unassignedW: 700, totalW: 2200 });
+    expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 900, L2: 300, L3: 300, unassignedW: 700, totalW: 2200 });
     const before = structuredClone(doc.data), next = balanceUnassignedPhases(doc.data, board);
     expect(next.circuits.map(circuit => circuit.phase)).toEqual(['L1', undefined, 'L2', 'L2']);
-    expect(getPhaseLoads(next, next.boards[0])).toEqual({ L1: 900, L2: 1000, L3: 300, unassignedW: 0, totalW: 2200 });
+    expect(getPhaseLoads(next, next.boards[0])).toEqual({ L: 0, L1: 900, L2: 1000, L3: 300, unassignedW: 0, totalW: 2200 });
     expect(doc.data).toEqual(before);
   });
 
@@ -120,7 +146,7 @@ describe('detailed wiring documentation', () => {
       { id: 'sibling', code: '2', name: '', notes: '', color: '#123456', powerW: 400, protectionDeviceId: 'a' },
       { id: 'other', code: '3', name: '', notes: '', color: '#123456', powerW: 900, protectionDeviceId: 'b' },
     ];
-    expect(getPhaseLoads(doc.data, board)).toEqual({ L1: 0, L2: 0, L3: 1000, unassignedW: 900, totalW: 1900 });
+    expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 0, L2: 0, L3: 1000, unassignedW: 900, totalW: 1900 });
     const next = balanceUnassignedPhases(doc.data, board);
     expect(next.circuits.map(circuit => circuit.phase)).toEqual(['L3', 'L3', 'L1']);
     expect(doc.data.circuits[1].phase).toBeUndefined();
@@ -136,7 +162,7 @@ describe('detailed wiring documentation', () => {
     ];
     expect(getWiringIssues(doc.data, board)).toContainEqual(expect.objectContaining({ code: 'phase-assignment-conflict', deviceId: 'a' }));
     expect(balanceUnassignedPhases(doc.data, board).circuits).toEqual(doc.data.circuits);
-    expect(getPhaseLoads(doc.data, board)).toEqual({ L1: 600, L2: 400, L3: 0, unassignedW: 200, totalW: 1200 });
+    expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 600, L2: 400, L3: 0, unassignedW: 200, totalW: 1200 });
   });
 
   it('uses associated contactor/outlet phase data and leaves their three-phase loads unbalanced', () => {
@@ -149,7 +175,7 @@ describe('detailed wiring documentation', () => {
       { id: 'outlet', code: '2', name: '', notes: '', color: '#123456', powerW: 400 },
       { id: 'three', code: '3', name: '', notes: '', color: '#123456', powerW: 900 },
     ];
-    expect(getPhaseLoads(doc.data, board)).toEqual({ L1: 300, L2: 900, L3: 700, unassignedW: 0, totalW: 1900 });
+    expect(getPhaseLoads(doc.data, board)).toEqual({ L: 0, L1: 300, L2: 900, L3: 700, unassignedW: 0, totalW: 1900 });
     expect(balanceUnassignedPhases(doc.data, board).circuits.map(circuit => circuit.phase)).toEqual(['L2', 'L3', undefined]);
   });
 

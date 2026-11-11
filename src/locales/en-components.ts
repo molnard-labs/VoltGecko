@@ -1,4 +1,7 @@
 const translations: Record<string, string> = {
+  'Nyomvonalak az alaprajzon': 'Routes on the floor plan',
+  'Nincs ehhez az áramkörhöz rendelt nyomvonal.': 'No routes are assigned to this circuit.',
+  'Ismeretlen végpont': 'Unknown endpoint',
   'Elosztó elhelyezése': 'Place distribution board',
   'Elhelyezendő elosztó': 'Distribution board to place',
   'Válaszd ki az elosztót, majd kattints a helyére': 'Choose a distribution board, then click where to place it',

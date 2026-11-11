@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import type { Board, CableDetails, Circuit, Conductor, Device, Phase, ProjectData, WiringEndpoint } from '../types';
 import { getBoardTerminalWarnings } from './boardTerminalWarnings';
 import { easy9NeutralPoleCount } from '../products/easy9PoleOrder';
+import { balancingPhases } from './projectPhases';
 
 const phases: Phase[] = ['L1', 'L2', 'L3'];
 
@@ -425,6 +426,7 @@ function getPhaseAssignmentIssues(data: ProjectData, board: Board): WiringIssue[
   return issues;
 }
 export interface PhaseLoads {
+  L: number;
   L1: number;
   L2: number;
   L3: number;
@@ -432,7 +434,7 @@ export interface PhaseLoads {
   totalW: number;
 }
 export function getPhaseLoads(data: ProjectData, board: Board): PhaseLoads {
-  const loads: PhaseLoads = { L1: 0, L2: 0, L3: 0, unassignedW: 0, totalW: 0 };
+  const loads: PhaseLoads = { L: 0, L1: 0, L2: 0, L3: 0, unassignedW: 0, totalW: 0 };
   const circuits = boardCircuits(data, board),
     groups = phaseGroups(data, circuits);
   for (const circuit of circuits) {
@@ -469,9 +471,12 @@ export function balanceUnassignedPhases(data: ProjectData, board: Board): Projec
           a.unassigned.reduce((sum, circuit) => sum + power(circuit), 0) || a.key.localeCompare(b.key)
     );
   const targets = new Map(next.circuits.map((circuit) => [circuit.id, circuit]));
+  const available = balancingPhases(data);
   for (const item of pending) {
+    // A conflicting saved phase remains untouched rather than being propagated.
+    if (item.fixed[0] && !available.includes(item.fixed[0])) continue;
     const phase =
-      item.fixed[0] ?? phases.reduce((best, candidate) => (loads[candidate] < loads[best] ? candidate : best), 'L1');
+      item.fixed[0] ?? available.reduce((best, candidate) => (loads[candidate] < loads[best] ? candidate : best));
     for (const circuit of item.unassigned) targets.get(circuit.id)!.phase = phase;
     // Fixed sibling/device phases were already included in the initial totals.
     if (!item.fixed.length) loads[phase] += item.unassigned.reduce((sum, circuit) => sum + power(circuit), 0);
@@ -511,7 +516,7 @@ export function assignConnectedPhase(data: ProjectData, from: WiringEndpoint, to
     from.kind === 'bus' && to.kind === 'device' ? from : to.kind === 'bus' && from.kind === 'device' ? to : undefined;
   if (!terminal || !busEndpoint || terminal.pole === undefined) return;
   const phase = endpointConductor(data, busEndpoint);
-  if (phase !== 'L1' && phase !== 'L2' && phase !== 'L3') return;
+  if (phase !== 'L' && phase !== 'L1' && phase !== 'L2' && phase !== 'L3') return;
   const device = data.devices.find((item) => item.id === terminal.deviceId);
   if (!device || device.electrical?.phase) return;
   const poles = effectiveDevicePoles(device),
